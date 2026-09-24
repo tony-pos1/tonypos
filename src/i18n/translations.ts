@@ -134,6 +134,8 @@ export const translations = {
     itemsList: 'รายการ',
     totalPayment: 'รวมจ่าย',
     thankYou: 'ขอบคุณที่มาอุดหนุนค่ะ/ครับ',
+    pendingPayment: 'รอรับชำระเงิน',
+    pendingPaymentTitle: 'ใบแจ้งรายการ / ใบเสร็จ',
 
     // Menu Manager
     menuManagerTitle: 'จัดการเมนูอาหารและเครื่องดื่ม',
@@ -423,6 +425,8 @@ export const translations = {
     itemsList: 'Items',
     totalPayment: 'Total Paid',
     thankYou: 'Thank you for your visit!',
+    pendingPayment: 'Pending Payment',
+    pendingPaymentTitle: 'Bill / Receipt',
 
     // Menu Manager
     menuManagerTitle: 'Menu & Category Manager',

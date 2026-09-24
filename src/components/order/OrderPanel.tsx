@@ -26,6 +26,7 @@ import {
   RotateCcw,
   Percent,
   AlertTriangle,
+  Printer,
 } from 'lucide-react';
 
 interface OrderPanelProps {
@@ -42,6 +43,7 @@ interface OrderPanelProps {
   onEditModifiers: (line: OrderLine) => void;
   onCheckout: () => void;
   onApplyDiscount: (amount: number, reason?: string) => void;
+  onPrintReceipt?: () => void;
 }
 
 export const OrderPanel: React.FC<OrderPanelProps> = ({
@@ -57,6 +59,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
   onEditModifiers,
   onCheckout,
   onApplyDiscount,
+  onPrintReceipt,
 }) => {
   const { t, language } = useI18n();
   const [showDiscountModal, setShowDiscountModal] = useState(false);
@@ -160,6 +163,22 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
     }
     sound.playTap();
     onCheckout();
+  };
+
+  const handlePrintReceiptClick = () => {
+    if (activeLines.length === 0) {
+      sound.playWarningBeep();
+      return;
+    }
+    if (hasUnsentLines) {
+      sound.playWarningBeep();
+      setShowSaveBeforePayModal(true);
+      return;
+    }
+    sound.playTap();
+    if (onPrintReceipt) {
+      onPrintReceipt();
+    }
   };
 
   return (
@@ -277,6 +296,18 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
             <span className="truncate">{t('checkoutButton')}</span>
           </button>
         </div>
+
+        {/* Print Receipt Button (On saved bill before payment) */}
+        <button
+          type="button"
+          onClick={handlePrintReceiptClick}
+          disabled={activeLines.length === 0}
+          className="w-full py-2.5 px-3 rounded-xl border border-slate-300 hover:border-orange-400 bg-white hover:bg-orange-50/50 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:cursor-not-allowed text-slate-800 hover:text-orange-950 font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer min-h-[42px]"
+          title={language === 'th' ? 'พิมพ์ใบเสร็จให้ลูกค้าตรวจสอบก่อนชำระเงิน' : 'Print receipt for customer to check before paying'}
+        >
+          <Printer className="w-4 h-4 text-orange-600" />
+          <span>{t('receiptPrint')}</span>
+        </button>
 
         {/* Secondary Action Row: Hold Order & Clear Order */}
         <div className="grid grid-cols-2 gap-2 text-xs">
