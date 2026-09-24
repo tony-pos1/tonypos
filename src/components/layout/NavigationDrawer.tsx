@@ -141,8 +141,8 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
     },
   ];
 
-  // Filter items visible to user role
-  const visibleNavItems = allNavItems.filter((item) => item.roles.includes(role));
+  // All drawer pages are visible and enabled (no role restrictions)
+  const visibleNavItems = allNavItems;
 
   const handleSelectPage = (viewId: NavView) => {
     sound.playTap();

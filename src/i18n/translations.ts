@@ -274,6 +274,10 @@ export const translations = {
     tableAvailable: 'ว่าง',
     tableOccupied: 'มีลูกค้า',
     tableBillRequested: 'เรียกเช็คบิล',
+    tableReserved: 'จองแล้ว',
+    currentTable: 'โต๊ะนี้',
+    noTablesInZone: 'ไม่มีโต๊ะในโซนนี้',
+    floorPlanViewNote: 'คลิกเลือกโต๊ะบนผังร้านเพื่อบันทึกออเดอร์',
 
     // Orders History & CRM
     orderStatusPaid: 'ชำระแล้ว',
@@ -558,6 +562,10 @@ export const translations = {
     tableAvailable: 'Available',
     tableOccupied: 'Occupied',
     tableBillRequested: 'Bill Requested',
+    tableReserved: 'Reserved',
+    currentTable: 'Current',
+    noTablesInZone: 'No tables in this zone',
+    floorPlanViewNote: 'Tap a table on the floor plan to assign order',
 
     // Orders History & CRM
     orderStatusPaid: 'Paid',
