@@ -9,7 +9,6 @@ import {
   Trash2,
   Check,
   X,
-  Layers,
 } from 'lucide-react';
 
 interface CategoryTabBarProps {
@@ -192,23 +191,6 @@ export const CategoryTabBar: React.FC<CategoryTabBarProps> = ({
             );
           })}
 
-          {/* 3. PERMANENT "VIEW ALL" (ดูทั้งหมด) CARD */}
-          <button
-            type="button"
-            onClick={() => {
-              sound.playTap();
-              onSelectCategory('all');
-            }}
-            className={`px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-1.5 whitespace-nowrap min-h-[46px] transition cursor-pointer border shrink-0 ${
-              selectedCategory === 'all'
-                ? 'bg-orange-500 border-orange-600 text-white shadow-md'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-            title="ดูเมนูทั้งหมด (View all menu items)"
-          >
-            <Layers className="w-4 h-4" />
-            <span>{language === 'th' ? 'ดูทั้งหมด' : 'View all'}</span>
-          </button>
 
           {/* 4. "+" CARD AT THE END TO ADD A NEW CATEGORY */}
           <button

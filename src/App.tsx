@@ -342,7 +342,7 @@ export default function App() {
     setCategories(updatedCats);
     setItems(updatedItems);
     if (selectedCategory === id) {
-      setSelectedCategory('all');
+      setSelectedCategory(updatedCats.length > 0 ? updatedCats[0].id : 'categories');
     }
     broadcastSync();
   };
