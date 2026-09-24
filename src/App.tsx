@@ -88,27 +88,14 @@ export default function App() {
     };
   }, [language]);
 
-  // Dark Mode State
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('kind_pos_theme') === 'dark';
-    }
-    return false;
-  });
-
+  // Light Mode Only (Dark mode toggle removed)
+  const isDarkMode = false;
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('kind_pos_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('kind_pos_theme', 'light');
+    document.documentElement.classList.remove('dark');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('kind_pos_theme');
     }
-  }, [isDarkMode]);
-
-  const toggleDarkMode = () => {
-    setIsDarkMode((prev) => !prev);
-  };
+  }, []);
 
   // Start page after opening the app or logging in is ALWAYS the Tables floor plan
   const [currentView, setCurrentView] = useState<NavView>('tables');
@@ -695,14 +682,6 @@ export default function App() {
         notifications={notifications}
         isDarkMode={isDarkMode}
         onOpenDrawer={() => setIsNavOpen(true)}
-        onToggleDarkMode={toggleDarkMode}
-        onClearNotifications={() => setNotifications([])}
-        onSimulateCallWaiter={() => {
-          addNotification('call_waiter', 'โต๊ะ T2 เรียกพนักงาน', 'Table T2 called waiter');
-        }}
-        onSimulateRequestBill={() => {
-          addNotification('request_bill', 'โต๊ะ T3 ขอเช็คบิล', 'Table T3 requested bill');
-        }}
       />
 
       {/* Main Content Area */}
@@ -771,8 +750,18 @@ export default function App() {
                 setShowReceiptModal(true);
               }}
               onVoidOrder={async (orderId) => {
+                const targetOrd = allOrders.find((o) => o.id === orderId);
+                if (targetOrd?.tableId) {
+                  await tableRepo.updateTable(targetOrd.tableId, {
+                    status: 'available',
+                    currentOrderId: undefined,
+                    runningTotal: 0,
+                    seatedAt: undefined,
+                  });
+                }
                 await orderRepo.deleteOrder(orderId);
                 reloadAllData();
+                broadcastSync();
               }}
             />
           )}

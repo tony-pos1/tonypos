@@ -20,15 +20,12 @@ import { useI18n } from '../../i18n';
 import { sound } from '../../utils/sound';
 import {
   Utensils,
-  ShoppingBag,
-  Bike,
   CheckCircle,
   CreditCard,
   PauseCircle,
   RotateCcw,
   Percent,
   AlertTriangle,
-  Send,
 } from 'lucide-react';
 
 interface OrderPanelProps {
@@ -36,7 +33,7 @@ interface OrderPanelProps {
   settings: AppSettings;
   heldOrdersCount: number;
   onUpdateLines: (lines: OrderLine[]) => void;
-  onUpdateOrderType: (type: OrderType) => void;
+  onUpdateOrderType?: (type: OrderType) => void;
   onConfirmOrder: () => void;
   onSaveOrderAndNavigateToTables: () => void;
   onHoldOrder: () => void;
@@ -52,7 +49,6 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
   settings,
   heldOrdersCount,
   onUpdateLines,
-  onUpdateOrderType,
   onConfirmOrder,
   onSaveOrderAndNavigateToTables,
   onHoldOrder,
@@ -167,89 +163,13 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 select-none overflow-hidden">
-      {/* Top Header: Order Type and Table / Order Identifier */}
-      <div className="p-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-2 shrink-0">
-        {/* Order Type Tabs: Dine-in / Takeaway / Delivery */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-          <button
-            type="button"
-            onClick={() => {
-              sound.playTap();
-              onUpdateOrderType('dine_in');
-            }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-              order.orderType === 'dine_in'
-                ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            <Utensils className="w-3.5 h-3.5" />
-            <span>{language === 'th' ? 'ทานที่ร้าน' : 'Dine In'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              sound.playTap();
-              onUpdateOrderType('takeaway');
-            }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-              order.orderType === 'takeaway'
-                ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>{language === 'th' ? 'กลับบ้าน' : 'Takeaway'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              sound.playTap();
-              onUpdateOrderType('delivery');
-            }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-              order.orderType === 'delivery'
-                ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            <Bike className="w-3.5 h-3.5" />
-            <span>{language === 'th' ? 'เดลิเวอรี' : 'Delivery'}</span>
-          </button>
-        </div>
-
-        {/* Order info and table / queue identifier */}
-        <div className="flex items-center justify-between text-xs pt-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-              {order.orderType === 'dine_in'
-                ? order.tableName || `${t('table')} -`
-                : order.orderType === 'takeaway'
-                ? `${language === 'th' ? 'กลับบ้าน' : 'Takeaway'} ${order.queueNumber ? `Q#${order.queueNumber}` : `#${order.id.slice(-4)}`}`
-                : `${language === 'th' ? 'เดลิเวอรี' : 'Delivery'} #${order.id.slice(-4)}`}
-            </span>
-            {order.guestCount && order.guestCount > 0 ? (
-              <span className="text-[10px] text-slate-400">
-                ({order.guestCount} {language === 'th' ? 'ท่าน' : 'guests'})
-              </span>
-            ) : null}
-          </div>
-
-          <div className="flex items-center gap-1 text-[11px] text-slate-400">
-            <span>{activeLines.length} {t('orderLinesCount')}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Lines List (DndContext Scrollable) */}
+    <div className="flex flex-col h-full bg-white border-l border-slate-200 select-none overflow-hidden">
+      {/* Lines List (DndContext Scrollable) - Starts directly without order-type selector or title */}
       <div className="flex-1 overflow-y-auto p-2.5 space-y-2 scrollbar-thin">
         {order.lines.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
             <Utensils className="w-8 h-8 mb-2 opacity-30 text-orange-500" />
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+            <p className="text-xs font-bold text-slate-600">
               {t('emptyOrderTitle')}
             </p>
             <p className="text-[11px] text-slate-400 mt-1 max-w-[200px]">
@@ -286,16 +206,16 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
       </div>
 
       {/* Bill Financial Summary */}
-      <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-xs space-y-1.5 shrink-0">
-        <div className="flex justify-between text-slate-500 dark:text-slate-400">
+      <div className="p-3 bg-slate-50 border-t border-slate-200 text-xs space-y-1.5 shrink-0">
+        <div className="flex justify-between text-slate-500">
           <span>{t('subtotal')}</span>
-          <span className="font-semibold text-slate-800 dark:text-slate-200">
+          <span className="font-semibold text-slate-800">
             ฿{order.subtotal.toFixed(2)}
           </span>
         </div>
 
         {/* Discount Row */}
-        <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
+        <div className="flex justify-between items-center text-slate-500">
           <div className="flex items-center gap-1">
             <span>{t('discount')}</span>
             <button
@@ -315,20 +235,20 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
         </div>
 
         {/* Net Total Display */}
-        <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-baseline">
+        <div className="pt-2 border-t border-slate-200 flex justify-between items-baseline">
           <div>
-            <span className="font-black text-sm text-slate-900 dark:text-slate-100">
+            <span className="font-black text-sm text-slate-900">
               {t('netTotal')}
             </span>
           </div>
-          <div className="text-xl font-black text-orange-600 dark:text-orange-500">
+          <div className="text-xl font-black text-orange-600">
             ฿{order.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
       </div>
 
       {/* Action Buttons Toolbar */}
-      <div className="p-2.5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-2 shrink-0">
+      <div className="p-2.5 bg-white border-t border-slate-200 space-y-2 shrink-0">
         <div className="grid grid-cols-2 gap-2">
           {/* Confirm Order Button (Saves draft lines to table / open bills) */}
           <button
@@ -368,7 +288,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
               else onHoldOrder();
             }}
             disabled={activeLines.length === 0 && heldOrdersCount === 0}
-            className="py-1.5 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition cursor-pointer flex items-center justify-center gap-1"
+            className="py-1.5 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition cursor-pointer flex items-center justify-center gap-1"
           >
             <PauseCircle className="w-3.5 h-3.5 text-amber-500" />
             <span className="text-[11px] truncate">
@@ -387,7 +307,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
               }
             }}
             disabled={order.lines.length === 0}
-            className="py-1.5 px-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 font-semibold transition cursor-pointer flex items-center justify-center gap-1"
+            className="py-1.5 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold transition cursor-pointer flex items-center justify-center gap-1"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="text-[11px] truncate">{t('clearOrder')}</span>
@@ -398,16 +318,16 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
       {/* SAVE-BEFORE-PAY RULE MODAL */}
       {showSaveBeforePayModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs select-none">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 max-w-sm w-full shadow-2xl text-slate-900 dark:text-slate-100 animate-in fade-in zoom-in-95">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 max-w-sm w-full shadow-2xl text-slate-900 animate-in fade-in zoom-in-95">
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
                 <h4 className="text-sm font-bold">
                   {language === 'th' ? 'มีรายการที่ยังไม่ได้บันทึก' : 'Unsaved Items'}
                 </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   {language === 'th'
                     ? 'คุณมีรายการที่ยังไม่ได้บันทึก กรุณาบันทึกออเดอร์ลงโต๊ะก่อน'
                     : 'You have items that are not saved yet. Please save the order to the table first.'}
@@ -433,7 +353,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSaveBeforePayModal(false)}
-                className="w-full py-2 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+                className="w-full py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
               >
                 {language === 'th' ? 'ยกเลิก' : 'Cancel'}
               </button>
@@ -445,20 +365,20 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
       {/* Discount Dialog Modal */}
       {showDiscountModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs select-none">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 max-w-sm w-full shadow-2xl text-slate-900 dark:text-slate-100 animate-in fade-in zoom-in-95">
-            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-3 flex items-center gap-1.5">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 max-w-sm w-full shadow-2xl text-slate-900 animate-in fade-in zoom-in-95">
+            <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-1.5">
               <Percent className="w-4 h-4 text-orange-600" />
               <span>{t('discount')}</span>
             </h4>
 
-            <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700 mb-3">
+            <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200 mb-3">
               <button
                 type="button"
                 onClick={() => setDiscountMode('baht')}
                 className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
                   discountMode === 'baht'
-                    ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-white text-orange-600 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 บาท (THB)
@@ -468,8 +388,8 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
                 onClick={() => setDiscountMode('percent')}
                 className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
                   discountMode === 'percent'
-                    ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-white text-orange-600 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 เปอร์เซ็นต์ (%)
@@ -478,7 +398,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
 
             <div className="space-y-2 mb-4">
               <div>
-                <label className="text-xs text-slate-700 dark:text-slate-300 font-semibold block mb-1">
+                <label className="text-xs text-slate-700 font-semibold block mb-1">
                   จำนวนส่วนลด ({discountMode === 'baht' ? '฿' : '%'})
                 </label>
                 <input
@@ -486,12 +406,12 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
                   min={0}
                   value={discountVal || ''}
                   onChange={(e) => setDiscountVal(Number(e.target.value) || 0)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-orange-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-orange-500"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-slate-700 dark:text-slate-300 font-semibold block mb-1">
+                <label className="text-xs text-slate-700 font-semibold block mb-1">
                   เหตุผล / ชื่อโปรโมชั่น
                 </label>
                 <input
@@ -499,7 +419,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
                   placeholder="เช่น ลูกค้าประจำ, พนักงาน"
                   value={discountReason}
                   onChange={(e) => setDiscountReason(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-orange-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500"
                 />
               </div>
             </div>
@@ -508,7 +428,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setShowDiscountModal(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
               >
                 {t('cancel')}
               </button>

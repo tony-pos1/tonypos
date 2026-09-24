@@ -27,7 +27,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
   onSelectTable,
   onRefreshTables,
 }) => {
-  const { language } = useI18n();
+  const { t, language } = useI18n();
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedZone, setSelectedZone] = useState<string>('all');
   const [zones, setZones] = useState<FloorZone[]>([]);
@@ -68,11 +68,43 @@ export const TablesView: React.FC<TablesViewProps> = ({
   }, [orders]);
 
   // Filter only orderable tables in cards view
-  const orderableTables = tables.filter((t) => t.itemType !== 'chair');
-  const filteredTables = orderableTables.filter((table) => {
-    if (selectedZone === 'all') return true;
-    return table.zone === selectedZone;
-  });
+  const orderableTables = useMemo(() => {
+    return tables.filter((t) => t.itemType !== 'chair');
+  }, [tables]);
+
+  // Determine if a table currently has a saved order (active bill with confirmed items: occupied or billed)
+  const hasSavedOrder = (table: DiningTable): boolean => {
+    // Available tables have no saved order
+    if (table.status === 'available') return false;
+
+    // Occupied or Waiting-for-payment (billed) statuses have saved orders
+    if (table.status === 'occupied' || table.status === 'billed') {
+      return true;
+    }
+
+    // Check if table has an active order with confirmed/saved items in orders
+    if (orders && orders.length > 0) {
+      const activeOrder = orders.find(
+        (o) =>
+          o.tableId === table.id &&
+          (o.status === 'open' || o.status === 'billed' || o.status === 'held') &&
+          !o.isPaid
+      );
+      if (activeOrder && activeOrder.lines.some((l) => l.status === 'sent')) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // When selectedZone is "All zones", show ONLY tables with a saved order
+  const filteredTables = useMemo(() => {
+    if (selectedZone === 'all') {
+      return orderableTables.filter(hasSavedOrder);
+    }
+    return orderableTables.filter((table) => table.zone === selectedZone);
+  }, [orderableTables, selectedZone, orders]);
 
   // Table operations
   const handleUpdateTable = async (id: string, changes: Partial<DiningTable>) => {
@@ -255,14 +287,23 @@ export const TablesView: React.FC<TablesViewProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden relative">
         {isCardsView && !isEditMode ? (
-          /* Service Mode for "All zones": Compact Table Cards Grid */
+          /* Service Mode for "All zones": Compact Table Cards Grid (Only tables with saved order) */
           <div className="h-full overflow-y-auto p-4 sm:p-5">
             {filteredTables.length === 0 ? (
               <div className="py-20 text-center text-slate-400">
                 <LayoutGrid className="w-12 h-12 mx-auto text-slate-300 mb-2" />
-                <p className="text-sm font-medium">
-                  {language === 'th' ? 'ไม่พบโต๊ะในโซนนี้' : 'No tables in this zone'}
+                <p className="text-sm font-bold text-slate-600">
+                  {selectedZone === 'all'
+                    ? (t('noTablesWithSavedOrders') || (language === 'th' ? 'ยังไม่มีโต๊ะที่บันทึกออเดอร์' : 'No tables with saved orders yet'))
+                    : (t('noTablesInZone') || (language === 'th' ? 'ไม่พบโต๊ะในโซนนี้' : 'No tables in this zone'))}
                 </p>
+                {selectedZone === 'all' && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    {language === 'th'
+                      ? 'เลือกโซนเพื่อดูผังร้านและเปิดโต๊ะใหม่'
+                      : 'Select a zone to view floor plan and open a table'}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2.5 sm:gap-3">
@@ -278,7 +319,7 @@ export const TablesView: React.FC<TablesViewProps> = ({
             )}
           </div>
         ) : (
-          /* Specific Zone View & Edit Mode: Floor Plan Canvas */
+          /* Specific Zone View & Edit Mode: Floor Plan Canvas (Shows ALL tables in the zone) */
           <FloorPlanCanvas
             tables={tables}
             isEditMode={isEditMode}

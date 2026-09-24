@@ -277,6 +277,7 @@ export const translations = {
     tableReserved: 'จองแล้ว',
     currentTable: 'โต๊ะนี้',
     noTablesInZone: 'ไม่มีโต๊ะในโซนนี้',
+    noTablesWithSavedOrders: 'ยังไม่มีโต๊ะที่บันทึกออเดอร์',
     floorPlanViewNote: 'คลิกเลือกโต๊ะบนผังร้านเพื่อบันทึกออเดอร์',
 
     // Orders History & CRM
@@ -565,6 +566,7 @@ export const translations = {
     tableReserved: 'Reserved',
     currentTable: 'Current',
     noTablesInZone: 'No tables in this zone',
+    noTablesWithSavedOrders: 'No tables with saved orders yet',
     floorPlanViewNote: 'Tap a table on the floor plan to assign order',
 
     // Orders History & CRM
