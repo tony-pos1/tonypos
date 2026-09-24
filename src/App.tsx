@@ -25,7 +25,7 @@ import { useI18n } from './i18n';
 import { useBackupWarning } from './hooks/useBackupWarning';
 import { sound } from './utils/sound';
 import { calculateOrderTotals } from './utils/taxCalculator';
-import { defaultSettings } from './db/seedData';
+import { defaultSettings, demoUsers } from './db/seedData';
 
 // Layout components
 import { Header } from './components/layout/Header';
@@ -78,8 +78,22 @@ export default function App() {
   const { t, language } = useI18n();
   const { needsBackup, dismissWarning, refreshBackupStatus } = useBackupWarning();
 
-  // Authentication State
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  // Active User State - Default to Owner (No 4-digit PIN required)
+  const [currentUser, setCurrentUser] = useState<AppUser>(() => {
+    if (typeof window !== 'undefined') {
+      const savedUserId = localStorage.getItem('kind_pos_active_user_id');
+      const found = demoUsers.find((u) => u.id === savedUserId);
+      if (found) return found;
+    }
+    return demoUsers[0];
+  });
+
+  const handleSwitchUser = (user: AppUser) => {
+    setCurrentUser(user);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('kind_pos_active_user_id', user.id);
+    }
+  };
 
   // Dark Mode State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -637,20 +651,6 @@ export default function App() {
     broadcastSync();
   };
 
-  // If user is not logged in, show Touch PIN LoginView
-  if (!currentUser) {
-    return (
-      <LoginView
-        onLogin={(user) => {
-          setCurrentUser(user);
-          setCurrentView('tables');
-        }}
-        isDarkMode={isDarkMode}
-        onToggleDarkMode={toggleDarkMode}
-      />
-    );
-  }
-
   // Role authorization enforcement
   let activeView = currentView;
   if (currentUser.role === 'waiter' && !['tables', 'order'].includes(activeView)) {
@@ -691,10 +691,7 @@ export default function App() {
         notifications={notifications}
         isDarkMode={isDarkMode}
         onOpenDrawer={() => setIsNavOpen(true)}
-        onLogout={() => {
-          sound.playTap();
-          setCurrentUser(null);
-        }}
+        onSwitchUser={handleSwitchUser}
         onToggleDarkMode={toggleDarkMode}
         onClearNotifications={() => setNotifications([])}
         onSimulateCallWaiter={() => {
