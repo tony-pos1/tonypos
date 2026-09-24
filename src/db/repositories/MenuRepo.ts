@@ -12,6 +12,7 @@ export interface IMenuRepo {
   getItems(categoryId?: string): Promise<MenuItem[]>;
   getItem(id: string): Promise<MenuItem | undefined>;
   addItem(item: MenuItem): Promise<string>;
+  saveItem(item: MenuItem): Promise<string>;
   updateItem(id: string, changes: Partial<MenuItem>): Promise<void>;
   deleteItem(id: string): Promise<void>;
   duplicateItem(id: string): Promise<MenuItem>;
@@ -79,6 +80,11 @@ export class DexieMenuRepo implements IMenuRepo {
     };
     await db.menuItems.put(newItem);
     return newItem.id;
+  }
+
+  async saveItem(item: MenuItem): Promise<string> {
+    await db.menuItems.put(item);
+    return item.id;
   }
 
   async updateItem(id: string, changes: Partial<MenuItem>): Promise<void> {

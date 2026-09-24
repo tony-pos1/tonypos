@@ -462,16 +462,16 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
 
             {/* Main Item Body */}
             <div
-              className={`w-full h-full ${shapeRadiusClass} border-2 flex flex-col items-center justify-center transition-all ${
+              className={`w-full h-full ${shapeRadiusClass} flex flex-col items-center justify-center transition-all ${
                 isChair
-                  ? 'bg-slate-100 border-slate-300 text-slate-500 shadow-inner'
+                  ? 'bg-slate-100 border-2 border-slate-300 text-slate-500 shadow-inner'
                   : isAvailable
-                  ? 'bg-white border-slate-300 hover:border-emerald-500 text-slate-800'
+                  ? 'bg-emerald-50 border-[3px] border-[#047857] text-slate-800 hover:shadow-md'
                   : isOccupied
-                  ? 'bg-orange-500 border-orange-600 text-white shadow-md'
+                  ? 'bg-orange-100 border-[3px] border-[#dc2626] text-slate-900 shadow-md'
                   : isBilled
-                  ? 'bg-sky-500 border-sky-600 text-white shadow-md'
-                  : 'bg-slate-200 border-slate-300 text-slate-600'
+                  ? 'bg-rose-100 border-[3px] border-[#dc2626] text-slate-900 shadow-md'
+                  : 'bg-blue-50 border-[3px] border-[#2563eb] text-slate-900'
               }`}
             >
               {isChair ? (

@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   AppSettings,
+  AppUser,
   Customer,
   DiningTable,
+  InAppNotification,
   MenuCategory,
   MenuItem,
   Order,
@@ -31,6 +33,9 @@ import { NavigationDrawer, NavView } from './components/layout/NavigationDrawer'
 import { CashDrawerModal } from './components/layout/CashDrawerModal';
 import { BackupWarningBanner } from './components/common/BackupWarningBanner';
 
+// Auth component
+import { LoginView } from './components/auth/LoginView';
+
 // Order screen components
 import { CategoryTileGrid } from './components/order/CategoryTileGrid';
 import { CategoryTabBar } from './components/order/CategoryTabBar';
@@ -49,7 +54,8 @@ import { CustomerFacingDisplay } from './components/customer_display/CustomerFac
 import { CustomerDisplayControlModal } from './components/customer_display/CustomerDisplayControlModal';
 import { customerDisplaySync } from './utils/customerDisplaySync';
 
-// Other view components
+// Views
+import { DashboardView } from './components/dashboard/DashboardView';
 import { MenuItemEditorModal } from './components/menu/MenuItemEditorModal';
 import { TablesView } from './components/tables/TablesView';
 import { OrdersHistoryView } from './components/orders/OrdersHistoryView';
@@ -72,6 +78,50 @@ export default function App() {
   const { t, language } = useI18n();
   const { needsBackup, dismissWarning, refreshBackupStatus } = useBackupWarning();
 
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+
+  // Dark Mode State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('kind_pos_theme') === 'dark';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('kind_pos_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('kind_pos_theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode((prev) => !prev);
+  };
+
+  // Start page after opening the app or logging in is ALWAYS the Tables floor plan
+  const [currentView, setCurrentView] = useState<NavView>('tables');
+
+  // In-app Notifications State
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+
+  const addNotification = (type: 'call_waiter' | 'request_bill' | 'system', messageTh: string, messageEn: string) => {
+    sound.playNotificationChime();
+    const newNotif: InAppNotification = {
+      id: `notif_${Date.now()}`,
+      type,
+      message_th: messageTh,
+      message_en: messageEn,
+      timestamp: Date.now(),
+      read: false,
+    };
+    setNotifications((prev) => [newNotif, ...prev.slice(0, 19)]);
+  };
+
   // Core Data State
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -82,18 +132,16 @@ export default function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
 
   // Navigation Drawer & Modals State
-  const [currentView, setCurrentView] = useState<NavView>('order');
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isCashDrawerOpen, setIsCashDrawerOpen] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [isCustomerDisplayControlOpen, setIsCustomerDisplayControlOpen] = useState(false);
   const [isCustomerDisplayConnected, setIsCustomerDisplayConnected] = useState(false);
 
-  // Category State - starts at 'categories' screen for Quick Order Flow
+  // Category State for POS screen
   const [selectedCategory, setSelectedCategory] = useState<string>('categories');
-  const [isCategoryEditMode, setIsCategoryEditMode] = useState(false);
 
-  // Active Working Order State
+  // Working Order State
   const createFreshOrder = useCallback(
     (orderType: OrderType = 'dine_in', tableName?: string, tableId?: string): Order => {
       const orderNum = orderRepo.generateOrderNumber();
@@ -166,7 +214,34 @@ export default function App() {
     reloadAllData();
   }, [reloadAllData]);
 
-  // Dual Screen / CFD: Monitor customer display connection heartbeat
+  // Real-time Multi-Tab Sync with BroadcastChannel
+  useEffect(() => {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('kind_pos_broadcast');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'SYNC_DATA') {
+          reloadAllData();
+        }
+      };
+      return () => {
+        channel.close();
+      };
+    }
+  }, [reloadAllData]);
+
+  const broadcastSync = () => {
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const channel = new BroadcastChannel('kind_pos_broadcast');
+        channel.postMessage({ type: 'SYNC_DATA', timestamp: Date.now() });
+        channel.close();
+      } catch (e) {
+        // ignore
+      }
+    }
+  };
+
+  // CFD Connection
   useEffect(() => {
     customerDisplaySync.startHeartbeatCheck();
     const unsub = customerDisplaySync.subscribeConnection((connected) => {
@@ -178,7 +253,7 @@ export default function App() {
     };
   }, []);
 
-  // Dual Screen / CFD: Broadcast order & settings state to Screen 2 in real time
+  // CFD Broadcast
   useEffect(() => {
     customerDisplaySync.sendState({
       order: currentOrder,
@@ -190,11 +265,10 @@ export default function App() {
     });
   }, [currentOrder, settings, showPaymentModal]);
 
-  // Recalculate totals whenever lines, discount or settings change
+  // Recalculate totals
   const recalculateCurrentOrder = useCallback(
     (lines: OrderLine[], discountAmount = currentOrder.discountAmount, discountReason = currentOrder.discountReason): Order => {
       const totals = calculateOrderTotals(lines, settings, discountAmount);
-
       return {
         ...currentOrder,
         lines,
@@ -212,8 +286,8 @@ export default function App() {
     [currentOrder, settings]
   );
 
-  // Category selection items filter
-  const displayedItems = React.useMemo(() => {
+  // Category selection filter
+  const displayedItems = useMemo(() => {
     if (selectedCategory === 'all' || selectedCategory === 'categories') return items;
     if (selectedCategory === 'favorites') return items.filter((i) => i.isFavorite);
     return items.filter((i) => i.category_id === selectedCategory || (i as any).categoryId === selectedCategory);
@@ -229,7 +303,7 @@ export default function App() {
       ? (language === 'th' ? currentCategoryObj.name_th : currentCategoryObj.name_en)
       : undefined;
 
-  // CATEGORY TAB ACTIONS
+  // Category Tab Bar Actions
   const handleAddCategory = async (nameTh: string, nameEn: string, icon?: string) => {
     const newCat: MenuCategory = {
       id: `cat_${Date.now()}`,
@@ -241,176 +315,193 @@ export default function App() {
     await menuRepo.addCategory(newCat);
     const updated = await menuRepo.getCategories();
     setCategories(updated);
+    broadcastSync();
   };
 
   const handleRenameCategory = async (id: string, nameTh: string, nameEn: string) => {
     await menuRepo.updateCategory(id, { name_th: nameTh, name_en: nameEn });
     const updated = await menuRepo.getCategories();
     setCategories(updated);
+    broadcastSync();
   };
 
   const handleDeleteCategory = async (id: string) => {
+    // Move all items in this category to uncategorized so no food is lost
+    const itemsInCat = items.filter((i) => i.category_id === id);
+    for (const item of itemsInCat) {
+      await menuRepo.updateItem(item.id, { category_id: 'uncategorized' });
+    }
     await menuRepo.deleteCategory(id);
-    const updated = await menuRepo.getCategories();
-    setCategories(updated);
+    const updatedCats = await menuRepo.getCategories();
+    const updatedItems = await menuRepo.getItems();
+    setCategories(updatedCats);
+    setItems(updatedItems);
     if (selectedCategory === id) {
-      setSelectedCategory('categories');
+      setSelectedCategory('all');
+    }
+    broadcastSync();
+  };
+
+  // Item Click: Open Customizer
+  const handleSelectMenuItem = (item: MenuItem) => {
+    setCustomizerItem(item);
+    setEditingLine(null);
+  };
+
+  const handleEditModifiers = (line: OrderLine) => {
+    const originalItem = items.find((i) => i.id === line.menuItemId);
+    if (originalItem) {
+      setCustomizerItem(originalItem);
+      setEditingLine(line);
     }
   };
 
-  const handleReorderCategory = async (id: string, direction: 'left' | 'right') => {
-    const index = categories.findIndex((c) => c.id === id);
-    if (index === -1) return;
-    const targetIndex = direction === 'left' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= categories.length) return;
-
-    const newCats = [...categories];
-    const [moved] = newCats.splice(index, 1);
-    newCats.splice(targetIndex, 0, moved);
-    setCategories(newCats);
-    await menuRepo.reorderCategories(newCats.map((c) => c.id));
-  };
-
-  // MENU ITEM ACTIONS
-  const handleToggleFavorite = async (itemId: string) => {
-    await menuRepo.toggleItemFavorite(itemId);
-    setItems(await menuRepo.getItems());
-  };
-
-  const handleToggleAvailability = async (itemId: string) => {
-    await menuRepo.toggleItemAvailability(itemId);
-    setItems(await menuRepo.getItems());
-  };
-
-  const handleDuplicateItem = async (itemId: string) => {
-    sound.playTap();
-    await menuRepo.duplicateItem(itemId);
-    setItems(await menuRepo.getItems());
-  };
-
-  const handleDeleteItem = async (itemId: string) => {
-    sound.playTap();
-    await menuRepo.deleteItem(itemId);
-    setItems(await menuRepo.getItems());
-  };
-
-  const handleSaveMenuItem = async (itemData: MenuItem) => {
-    const exists = items.some((i) => i.id === itemData.id);
-    if (exists) {
-      await menuRepo.updateItem(itemData.id, itemData);
-    } else {
-      await menuRepo.addItem(itemData);
-    }
-    setItems(await menuRepo.getItems());
-  };
-
-  // ORDER ACTIONS: Adding / Updating lines
   const handleConfirmItemCustomizer = (
     quantity: number,
-    selectedOptions: SelectedOption[],
+    options: SelectedOption[],
     modifiers: string[],
-    notes: string
+    notes: string,
+    existingLineId?: string
   ) => {
     if (!customizerItem) return;
+    const item = customizerItem;
+    sound.playAddToCart();
+    const optionsTotal = options.reduce((sum, opt) => sum + opt.priceDelta, 0);
+    const unitPrice = item.price + optionsTotal;
 
-    // Calculate unit price = base + price deltas
-    const optionsDelta = selectedOptions.reduce((sum, o) => sum + (o.priceDelta || 0), 0);
-    const unitPrice = customizerItem.price + optionsDelta;
-
-    if (editingLine) {
-      // Update existing line
+    if (existingLineId) {
       const updatedLines = currentOrder.lines.map((l) => {
-        if (l.id === editingLine.id) {
+        if (l.id === existingLineId) {
           return {
             ...l,
             quantity,
-            selectedOptions,
+            selectedOptions: options,
             modifiers,
             notes,
             unitPrice,
+            subtotal: unitPrice * quantity,
           };
         }
         return l;
       });
       setCurrentOrder(recalculateCurrentOrder(updatedLines));
-      setEditingLine(null);
     } else {
-      // Add new line
       const newLine: OrderLine = {
-        id: `line_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        menuItemId: customizerItem.id,
-        name_th: customizerItem.name_th,
-        name_en: customizerItem.name_en,
-        basePrice: customizerItem.price,
-        unitPrice,
-        cost: customizerItem.cost,
+        id: `line_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        menuItemId: item.id,
+        name_th: item.name_th,
+        name_en: item.name_en,
         quantity,
-        selectedOptions,
+        unitPrice,
+        subtotal: unitPrice * quantity,
+        selectedOptions: options,
         modifiers,
         notes,
         status: 'unsent',
-        round: currentOrder.lines.length > 0 ? Math.max(...currentOrder.lines.map((l) => l.round || 1)) : 1,
       };
-
-      const updatedLines = [...currentOrder.lines, newLine];
-      setCurrentOrder(recalculateCurrentOrder(updatedLines));
+      setCurrentOrder(recalculateCurrentOrder([...currentOrder.lines, newLine]));
     }
-
     setCustomizerItem(null);
+    setEditingLine(null);
   };
 
-  // ORDER ACTIONS: Send to Kitchen
-  const handleSendToKitchen = async () => {
+  // Order Lines Update
+  const handleUpdateLines = (lines: OrderLine[]) => {
+    sound.playTap();
+    setCurrentOrder(recalculateCurrentOrder(lines));
+  };
+
+  const handleUpdateOrderType = (type: OrderType) => {
+    sound.playTap();
+    setCurrentOrder((prev) => ({
+      ...prev,
+      orderType: type,
+      tableName: type === 'dine_in' ? prev.tableName : type === 'takeaway' ? 'Takeaway' : 'Delivery',
+    }));
+  };
+
+  const handleApplyDiscount = (amount: number, reason?: string) => {
+    sound.playTap();
+    setCurrentOrder(recalculateCurrentOrder(currentOrder.lines, amount, reason));
+  };
+
+  // CONFIRM ORDER ACTION
+  const handleConfirmOrder = async () => {
     sound.playNotificationChime();
-    const updatedLines = currentOrder.lines.map((line) => {
-      if (line.status === 'unsent') {
-        return {
-          ...line,
-          status: 'sent' as const,
-          sentAt: Date.now(),
-        };
+    const sentLines: OrderLine[] = currentOrder.lines.map((l) => ({
+      ...l,
+      status: l.status === 'unsent' ? 'sent' : l.status,
+    }));
+    const updatedOrder = recalculateCurrentOrder(sentLines);
+
+    if (updatedOrder.orderType === 'dine_in') {
+      if (updatedOrder.tableId) {
+        await orderRepo.saveOrder(updatedOrder);
+        await tableRepo.updateTable(updatedOrder.tableId, {
+          status: 'occupied',
+          currentOrderId: updatedOrder.id,
+          runningTotal: updatedOrder.netTotal,
+          seatedAt: Date.now(),
+        });
+        setTables(await tableRepo.getTables());
+        setAllOrders(await orderRepo.getOrders(100));
+        setCurrentOrder(createFreshOrder('dine_in'));
+        setCurrentView('tables');
+        broadcastSync();
+      } else {
+        setShowAssignModal(true);
       }
-      return line;
-    });
-
-    const nextOrder: Order = {
-      ...currentOrder,
-      lines: updatedLines,
-      updatedAt: Date.now(),
-    };
-
-    setCurrentOrder(nextOrder);
-    await orderRepo.saveOrder(nextOrder);
-
-    // If table assigned, mark table as occupied
-    if (nextOrder.tableId) {
-      await tableRepo.updateTable(nextOrder.tableId, {
-        status: 'occupied',
-        currentOrderId: nextOrder.id,
-        runningTotal: nextOrder.netTotal,
-        seatedAt: Date.now(),
-      });
-      setTables(await tableRepo.getTables());
+    } else {
+      await orderRepo.saveOrder(updatedOrder);
+      setAllOrders(await orderRepo.getOrders(100));
+      setCurrentOrder(createFreshOrder('dine_in'));
+      setCurrentView('tables');
+      broadcastSync();
     }
   };
 
-  // ORDER ACTIONS: Hold / Park Order
-  const handleHoldOrder = async () => {
-    if (currentOrder.lines.length === 0) return;
+  const handleSaveOrderAndNavigateToTables = async () => {
+    await handleConfirmOrder();
+    setCurrentView('tables');
+  };
 
+  // Hold Order
+  const handleHoldOrder = async () => {
     sound.playTap();
     const held: Order = {
       ...currentOrder,
       status: 'held',
       updatedAt: Date.now(),
     };
-
     await orderRepo.saveOrder(held);
     setHeldOrders(await orderRepo.getHeldOrders());
-    setCurrentOrder(createFreshOrder(settings.serviceMode === 'fine_dining' ? 'dine_in' : 'takeaway'));
+    setCurrentOrder(createFreshOrder('dine_in'));
+    broadcastSync();
   };
 
-  // ASSIGN TABLE OR TAKEAWAY (from Save Button)
+  const handleResumeOrder = (order: Order) => {
+    sound.playTap();
+    const resumed: Order = {
+      ...order,
+      status: 'open',
+      updatedAt: Date.now(),
+    };
+    setCurrentOrder(resumed);
+    setCurrentView('order');
+  };
+
+  const handleDeleteHeldOrder = async (orderId: string) => {
+    sound.playTap();
+    await orderRepo.deleteOrder(orderId);
+    setHeldOrders(await orderRepo.getHeldOrders());
+    broadcastSync();
+  };
+
+  const handleClearOrder = () => {
+    setCurrentOrder(createFreshOrder(currentOrder.orderType, currentOrder.tableName, currentOrder.tableId));
+  };
+
+  // Assign Table from Modal
   const handleAssignTakeaway = async () => {
     sound.playTap();
     const nextQ = currentOrder.queueNumber || (await orderRepo.getNextDailyQueueNumber());
@@ -419,14 +510,15 @@ export default function App() {
       orderType: 'takeaway',
       tableName: `Takeaway Q#${nextQ}`,
       queueNumber: nextQ,
-      status: 'held',
+      status: 'open',
       updatedAt: Date.now(),
     };
     await orderRepo.saveOrder(updated);
-    setHeldOrders(await orderRepo.getHeldOrders());
     setAllOrders(await orderRepo.getOrders(100));
     setShowAssignModal(false);
-    setCurrentOrder(createFreshOrder(settings.serviceMode === 'fine_dining' ? 'dine_in' : 'takeaway'));
+    setCurrentOrder(createFreshOrder('dine_in'));
+    setCurrentView('tables');
+    broadcastSync();
   };
 
   const handleAssignTable = async (table: DiningTable) => {
@@ -449,41 +541,14 @@ export default function App() {
     setTables(await tableRepo.getTables());
     setAllOrders(await orderRepo.getOrders(100));
     setShowAssignModal(false);
-    setCurrentOrder(createFreshOrder(settings.serviceMode === 'fine_dining' ? 'dine_in' : 'takeaway'));
+    setCurrentOrder(createFreshOrder('dine_in'));
+    setCurrentView('tables');
+    broadcastSync();
   };
 
-  const handleHoldOrderAndCloseModal = async () => {
-    await handleHoldOrder();
-    setShowAssignModal(false);
-  };
-
-  // ORDER ACTIONS: Resume Order
-  const handleResumeOrder = (order: Order) => {
-    sound.playTap();
-    const resumed: Order = {
-      ...order,
-      status: 'open',
-      updatedAt: Date.now(),
-    };
-    setCurrentOrder(resumed);
-    setCurrentView('order');
-  };
-
-  const handleDeleteHeldOrder = async (orderId: string) => {
-    sound.playTap();
-    await orderRepo.deleteOrder(orderId);
-    setHeldOrders(await orderRepo.getHeldOrders());
-  };
-
-  // ORDER ACTIONS: Clear Order
-  const handleClearOrder = () => {
-    setCurrentOrder(createFreshOrder(currentOrder.orderType, currentOrder.tableName, currentOrder.tableId));
-  };
-
-  // CHECKOUT & PAYMENT FLOW
+  // Checkout & Payment
   const handleOpenCheckout = async () => {
     sound.playTap();
-    // In Quick Service, generate daily queue number if not already assigned
     if (!currentOrder.queueNumber) {
       const nextQ = await orderRepo.getNextDailyQueueNumber();
       setCurrentOrder((prev) => ({ ...prev, queueNumber: nextQ }));
@@ -495,6 +560,7 @@ export default function App() {
     const paidOrder: Order = {
       ...currentOrder,
       status: 'paid',
+      isPaid: true,
       payments,
       closedAt: Date.now(),
       updatedAt: Date.now(),
@@ -502,7 +568,7 @@ export default function App() {
 
     await orderRepo.saveOrder(paidOrder);
 
-    // Release table if occupied
+    // Free the table
     if (paidOrder.tableId) {
       await tableRepo.updateTable(paidOrder.tableId, {
         status: 'available',
@@ -510,132 +576,152 @@ export default function App() {
         runningTotal: 0,
         seatedAt: undefined,
       });
-      setTables(await tableRepo.getTables());
     }
 
-    // Update orders list & active views
+    setTables(await tableRepo.getTables());
     setAllOrders(await orderRepo.getOrders(100));
     setShowPaymentModal(false);
+
+    sound.playPaymentSuccess();
     setReceiptOrder(paidOrder);
     setShowReceiptModal(true);
 
-    // Broadcast celebration / change to customer display
-    const totalChange = payments.reduce((sum, p) => sum + (p.changeAmount || 0), 0);
-    customerDisplaySync.sendState({
-      order: null,
-      settings,
-      isPaymentOpen: false,
-      paymentMethod: payments[0]?.method || 'promptpay',
-      isPaidSuccess: true,
-      paidOrder,
-      changeDue: totalChange > 0 ? totalChange : undefined,
-      customQrImageUrl: settings.customPromptPayQrImage,
-      timestamp: Date.now(),
-    });
+    setCurrentOrder(createFreshOrder('dine_in'));
+    setCurrentView('tables');
+    broadcastSync();
   };
 
   const handleStartNewOrder = () => {
     setShowReceiptModal(false);
     setReceiptOrder(null);
-    const nextOrder = createFreshOrder(settings.serviceMode === 'fine_dining' ? 'dine_in' : 'takeaway');
-    setCurrentOrder(nextOrder);
-    setCurrentView('order');
-    setSelectedCategory('categories');
-
-    // Reset customer display to new order
-    customerDisplaySync.sendState({
-      order: nextOrder,
-      settings,
-      isPaymentOpen: false,
-      paymentMethod: 'promptpay',
-      isPaidSuccess: false,
-      paidOrder: null,
-      customQrImageUrl: settings.customPromptPayQrImage,
-      timestamp: Date.now(),
-    });
+    setCurrentOrder(createFreshOrder('dine_in'));
+    setCurrentView('tables');
   };
 
-  // TABLE SELECTION (from Floor Plan)
-  const handleSelectTable = (table: DiningTable) => {
+  // Table selection from Tables floor plan
+  const handleSelectTableFromFloorPlan = async (table: DiningTable) => {
     sound.playTap();
     if (table.currentOrderId) {
-      // Find order
-      const existing = allOrders.find((o) => o.id === table.currentOrderId);
+      const existing = await orderRepo.getOrder(table.currentOrderId);
       if (existing) {
         setCurrentOrder(existing);
         setCurrentView('order');
         return;
       }
     }
-
-    // Start fresh order for this table
-    const orderForTable = createFreshOrder('dine_in', table.name, table.id);
-    setCurrentOrder(orderForTable);
+    // New order for this table
+    const fresh = createFreshOrder('dine_in', table.name, table.id);
+    setCurrentOrder(fresh);
     setCurrentView('order');
-    setSelectedCategory('categories');
   };
 
-  // SETTINGS UPDATE
   const handleUpdateSettings = async (changes: Partial<AppSettings>) => {
     const updated = await settingsRepo.updateSettings(changes);
     setSettings(updated);
+    broadcastSync();
   };
 
-  // Current view title for header
-  const getHeaderTitle = () => {
-    switch (currentView) {
-      case 'order':
-        return language === 'th' ? 'สั่งอาหาร (Quick Order)' : 'Quick Order';
-      case 'tables':
-        return language === 'th' ? 'ผังโต๊ะอาหาร (Floor Plan)' : 'Floor Plan';
-      case 'orders':
-        return language === 'th' ? 'ประวัติบิล (Orders & Bills)' : 'Orders & Bills';
-      case 'menu':
-        return language === 'th' ? 'จัดการเมนู (Menu Manager)' : 'Menu Manager';
-      case 'customers':
-        return language === 'th' ? 'ลูกค้าสมาชิก (CRM)' : 'Customers';
-      case 'promotions':
-        return language === 'th' ? 'โปรโมชั่น & ส่วนลด' : 'Promotions';
-      case 'reports':
-        return language === 'th' ? 'รายงานการขาย (Reports)' : 'Sales Reports';
-      case 'settings':
-        return language === 'th' ? 'ตั้งค่าระบบ (Settings)' : 'System Settings';
-      default:
-        return '';
-    }
+  const handleSaveMenuItem = async (item: MenuItem) => {
+    await menuRepo.saveItem(item);
+    const updated = await menuRepo.getItems();
+    setItems(updated);
+    setItemEditorState({ isOpen: false, item: null });
+    broadcastSync();
   };
+
+  const handleToggleFavorite = async (itemId: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+    await menuRepo.updateItem(itemId, { isFavorite: !item.isFavorite });
+    setItems(await menuRepo.getItems());
+    broadcastSync();
+  };
+
+  // If user is not logged in, show Touch PIN LoginView
+  if (!currentUser) {
+    return (
+      <LoginView
+        onLogin={(user) => {
+          setCurrentUser(user);
+          setCurrentView('tables');
+        }}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={toggleDarkMode}
+      />
+    );
+  }
+
+  // Role authorization enforcement
+  let activeView = currentView;
+  if (currentUser.role === 'waiter' && !['tables', 'order'].includes(activeView)) {
+    activeView = 'tables';
+  } else if (currentUser.role === 'cashier' && !['tables', 'order', 'orders'].includes(activeView)) {
+    activeView = 'tables';
+  }
+
+  // Count active tables
+  const openBillsCount = tables.filter((t) => t.status === 'occupied' || t.status === 'billed').length;
+
+  const currentViewTitle =
+    activeView === 'tables'
+      ? (language === 'th' ? 'ผังโต๊ะอาหาร (Floor Plan)' : 'Floor Plan & Tables')
+      : activeView === 'order'
+      ? (language === 'th' ? 'สั่งอาหาร (POS Order)' : 'POS Order Taking')
+      : activeView === 'orders'
+      ? (language === 'th' ? 'ประวัติบิล (Bills & History)' : 'Bills & History')
+      : activeView === 'dashboard'
+      ? (language === 'th' ? 'ภาพรวมร้าน (Dashboard)' : 'Dashboard')
+      : activeView === 'menu'
+      ? (language === 'th' ? 'จัดการเมนู (Menu Management)' : 'Menu Management')
+      : activeView === 'customers'
+      ? (language === 'th' ? 'ลูกค้าสมาชิก (Customers)' : 'Customers')
+      : activeView === 'promotions'
+      ? (language === 'th' ? 'โปรโมชั่น (Promotions)' : 'Promotions')
+      : activeView === 'reports'
+      ? (language === 'th' ? 'รายงานยอดขาย (Sales Reports)' : 'Sales Reports')
+      : (language === 'th' ? 'ตั้งค่าระบบ (Settings)' : 'Settings');
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-100 text-slate-900 overflow-hidden font-sans select-none">
-      {/* 7-day Backup Warning Banner */}
-      <BackupWarningBanner
-        needsBackup={needsBackup}
-        onDismiss={dismissWarning}
-        onBackupCompleted={refreshBackupStatus}
-      />
-
-      {/* Top Application Header */}
+    <div className="flex flex-col h-dvh w-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans select-none">
+      {/* Top Header Bar */}
       <Header
         settings={settings}
-        currentTitle={getHeaderTitle()}
+        currentUser={currentUser}
+        currentTitle={currentViewTitle}
+        notifications={notifications}
+        isDarkMode={isDarkMode}
         onOpenDrawer={() => setIsNavOpen(true)}
-        onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
-        onOpenCustomerDisplayModal={() => setIsCustomerDisplayControlOpen(true)}
-        isCustomerDisplayConnected={isCustomerDisplayConnected}
-        onOpenPrinterSettings={() => {
-          setCurrentView('settings');
-          setSettingsTab('printer');
+        onLogout={() => {
+          sound.playTap();
+          setCurrentUser(null);
+        }}
+        onToggleDarkMode={toggleDarkMode}
+        onClearNotifications={() => setNotifications([])}
+        onSimulateCallWaiter={() => {
+          addNotification('call_waiter', 'โต๊ะ T2 เรียกพนักงาน', 'Table T2 called waiter');
+        }}
+        onSimulateRequestBill={() => {
+          addNotification('request_bill', 'โต๊ะ T3 ขอเช็คบิล', 'Table T3 requested bill');
         }}
       />
 
-      {/* Main Workspace Area (Full-width responsive view) */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Dynamic Main View */}
-        <main className="flex-1 flex overflow-hidden relative w-full">
-          {/* VIEW 1: ORDER SCREEN (Categories First / Menu Items Grid + Category Tab Bar + Current Order Panel) */}
-          {currentView === 'order' && (
-            <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden w-full">
-              {/* Left Column: Category First Tile Grid OR Menu Items Grid */}
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden relative pb-[62px]">
+        <main className="flex-1 flex overflow-hidden bg-white dark:bg-slate-900">
+          {/* 1. TABLES FLOOR PLAN VIEW */}
+          {activeView === 'tables' && (
+            <TablesView
+              tables={tables}
+              orders={allOrders}
+              onSelectTable={handleSelectTableFromFloorPlan}
+              onRefreshTables={reloadAllData}
+            />
+          )}
+
+          {/* 2. POS ORDER TAKING VIEW */}
+          {activeView === 'order' && (
+            <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden">
+              {/* Left / Middle: Food Items Grid */}
               <div className="flex-1 flex flex-col h-full overflow-hidden">
                 {selectedCategory === 'categories' ? (
                   <CategoryTileGrid
@@ -648,151 +734,108 @@ export default function App() {
                 ) : (
                   <MenuItemGrid
                     items={displayedItems}
-                    isEditMode={isCategoryEditMode}
                     categoryName={currentCategoryName}
-                    onBackToCategories={() => setSelectedCategory('categories')}
-                    onSelectItem={(item) => {
-                      setCustomizerItem(item);
-                      setEditingLine(null);
-                    }}
+                    onSelectItem={handleSelectMenuItem}
                     onToggleFavorite={handleToggleFavorite}
-                    onToggleAvailability={handleToggleAvailability}
-                    onAddItem={() =>
-                      setItemEditorState({ isOpen: true, item: null })
-                    }
-                    onEditItem={(item) =>
-                      setItemEditorState({ isOpen: true, item })
-                    }
-                    onDuplicateItem={handleDuplicateItem}
-                    onDeleteItem={handleDeleteItem}
                   />
                 )}
-
-                {/* Bottom Category Tab Bar */}
-                <CategoryTabBar
-                  categories={categories}
-                  selectedCategory={selectedCategory}
-                  onSelectCategory={setSelectedCategory}
-                  isEditMode={isCategoryEditMode}
-                  onToggleEditMode={() => setIsCategoryEditMode(!isCategoryEditMode)}
-                  onAddCategory={handleAddCategory}
-                  onRenameCategory={handleRenameCategory}
-                  onDeleteCategory={handleDeleteCategory}
-                  onReorderCategory={handleReorderCategory}
-                />
               </div>
 
-              {/* Right Column: Order Lines Panel with Drag & Drop & Arrows */}
-              <OrderPanel
-                order={currentOrder}
-                settings={settings}
-                heldOrdersCount={heldOrders.length}
-                onUpdateLines={(lines) => setCurrentOrder(recalculateCurrentOrder(lines))}
-                onUpdateOrderType={(type) => setCurrentOrder((prev) => ({ ...prev, orderType: type }))}
-                onSendToKitchen={handleSendToKitchen}
-                onHoldOrder={handleHoldOrder}
-                onSaveOrder={() => setShowAssignModal(true)}
-                onOpenHeldOrders={() => setShowHeldOrdersModal(true)}
-                onClearOrder={handleClearOrder}
-                onEditModifiers={(line) => {
-                  const item = items.find((i) => i.id === line.menuItemId);
-                  if (item) {
-                    setCustomizerItem(item);
-                    setEditingLine(line);
-                  }
-                }}
-                onCheckout={handleOpenCheckout}
-                onApplyDiscount={(amount, reason) => {
-                  setCurrentOrder(recalculateCurrentOrder(currentOrder.lines, amount, reason));
-                }}
-              />
+              {/* Right: Order Cart & Bill Panel */}
+              <div className="w-full md:w-96 lg:w-[420px] h-full shrink-0">
+                <OrderPanel
+                  order={currentOrder}
+                  settings={settings}
+                  heldOrdersCount={heldOrders.length}
+                  onUpdateLines={handleUpdateLines}
+                  onUpdateOrderType={handleUpdateOrderType}
+                  onConfirmOrder={handleConfirmOrder}
+                  onSaveOrderAndNavigateToTables={handleSaveOrderAndNavigateToTables}
+                  onHoldOrder={handleHoldOrder}
+                  onOpenHeldOrders={() => setShowHeldOrdersModal(true)}
+                  onClearOrder={handleClearOrder}
+                  onEditModifiers={handleEditModifiers}
+                  onCheckout={handleOpenCheckout}
+                  onApplyDiscount={handleApplyDiscount}
+                />
+              </div>
             </div>
           )}
 
-          {/* VIEW 2: TABLES FLOOR PLAN */}
-          {currentView === 'tables' && (
-            <TablesView
-              tables={tables}
-              orders={allOrders}
-              onSelectTable={handleSelectTable}
-              onRefreshTables={async () => {
-                setTables(await tableRepo.getTables());
-              }}
-            />
-          )}
-
-          {/* VIEW 3: ORDERS HISTORY */}
-          {currentView === 'orders' && (
+          {/* 3. ORDERS & BILLS VIEW */}
+          {activeView === 'orders' && (
             <OrdersHistoryView
               orders={allOrders}
-              onViewReceipt={(order) => {
-                setReceiptOrder(order);
+              onViewReceipt={(ord: Order) => {
+                setReceiptOrder(ord);
                 setShowReceiptModal(true);
               }}
               onVoidOrder={async (orderId) => {
-                await orderRepo.updateOrderStatus(orderId, 'voided');
-                setAllOrders(await orderRepo.getOrders(100));
+                await orderRepo.deleteOrder(orderId);
+                reloadAllData();
               }}
             />
           )}
 
-          {/* VIEW 4: MENU MANAGER */}
-          {currentView === 'menu' && (
-            <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden w-full">
-              <div className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* 4. DASHBOARD VIEW */}
+          {activeView === 'dashboard' && (
+            <DashboardView
+              orders={allOrders}
+              tables={tables}
+              onNavigateToTables={() => setCurrentView('tables')}
+              onNavigateToPOS={() => setCurrentView('order')}
+              onNavigateToReports={() => setCurrentView('reports')}
+            />
+          )}
+
+          {/* 5. MENU MANAGEMENT VIEW */}
+          {activeView === 'menu' && (
+            <div className="flex-1 flex flex-col h-full overflow-hidden p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold">
+                  {language === 'th' ? 'จัดการรายการอาหารและเครื่องดื่ม' : 'Menu Items & Categories'}
+                </h2>
+                <button
+                  onClick={() => setItemEditorState({ isOpen: true, item: null })}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs"
+                >
+                  + {language === 'th' ? 'เพิ่มเมนูใหม่' : 'Add Item'}
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
                 <MenuItemGrid
-                  items={displayedItems}
-                  isEditMode={true}
-                  categoryName={currentCategoryName}
-                  onBackToCategories={() => setSelectedCategory('categories')}
-                  onSelectItem={(item) => {
-                    setItemEditorState({ isOpen: true, item });
-                  }}
+                  items={items}
+                  onSelectItem={(item) => setItemEditorState({ isOpen: true, item })}
                   onToggleFavorite={handleToggleFavorite}
-                  onToggleAvailability={handleToggleAvailability}
-                  onAddItem={() =>
-                    setItemEditorState({ isOpen: true, item: null })
-                  }
-                  onEditItem={(item) =>
-                    setItemEditorState({ isOpen: true, item })
-                  }
-                  onDuplicateItem={handleDuplicateItem}
-                  onDeleteItem={handleDeleteItem}
-                />
-                <CategoryTabBar
-                  categories={categories}
-                  selectedCategory={selectedCategory}
-                  onSelectCategory={setSelectedCategory}
-                  isEditMode={true}
-                  onToggleEditMode={() => {}}
-                  onAddCategory={handleAddCategory}
-                  onRenameCategory={handleRenameCategory}
-                  onDeleteCategory={handleDeleteCategory}
-                  onReorderCategory={handleReorderCategory}
                 />
               </div>
             </div>
           )}
 
-          {/* VIEW 5: CUSTOMERS (CRM & Points) */}
-          {currentView === 'customers' && (
+          {/* 6. CUSTOMERS VIEW */}
+          {activeView === 'customers' && (
             <CustomersView
               customers={customers}
               onAddCustomer={async (c) => {
                 await customerRepo.addCustomer(c);
-                setCustomers(await customerRepo.getCustomers());
+                reloadAllData();
               }}
             />
           )}
 
-          {/* VIEW 6: PROMOTIONS */}
-          {currentView === 'promotions' && <PromotionsView />}
+          {/* 7. PROMOTIONS VIEW */}
+          {activeView === 'promotions' && <PromotionsView />}
 
-          {/* VIEW 7: REPORTS */}
-          {currentView === 'reports' && <ReportsView orders={allOrders} />}
+          {/* 8. REPORTS VIEW */}
+          {activeView === 'reports' && (
+            <ReportsView
+              orders={allOrders}
+            />
+          )}
 
-          {/* VIEW 8: SETTINGS */}
-          {currentView === 'settings' && (
+          {/* 9. SETTINGS VIEW */}
+          {activeView === 'settings' && (
             <SettingsView
               settings={settings}
               onUpdateSettings={handleUpdateSettings}
@@ -803,26 +846,45 @@ export default function App() {
         </main>
       </div>
 
+      {/* PERMANENT FIXED BOTTOM CATEGORY & BILL BAR */}
+      <CategoryTabBar
+        categories={categories}
+        selectedCategory={selectedCategory}
+        openBillsCount={openBillsCount}
+        activeTableTotal={currentOrder.netTotal}
+        onSelectCategory={(catId) => {
+          setSelectedCategory(catId);
+          setCurrentView('order');
+        }}
+        onSelectBill={() => {
+          setSelectedCategory('categories');
+          setCurrentView('tables');
+        }}
+        onAddCategory={handleAddCategory}
+        onRenameCategory={handleRenameCategory}
+        onDeleteCategory={handleDeleteCategory}
+      />
+
       {/* Navigation Slide-over Drawer */}
       <NavigationDrawer
         isOpen={isNavOpen}
         onClose={() => setIsNavOpen(false)}
-        currentView={currentView}
+        currentView={activeView}
+        currentUser={currentUser}
         onSelectView={(view) => {
           setCurrentView(view);
           if (view === 'order') {
             setSelectedCategory('categories');
           }
         }}
-        settings={settings}
-        onOpenCustomerDisplayModal={() => setIsCustomerDisplayControlOpen(true)}
-        onOpenPrinterSettings={() => {
-          setCurrentView('settings');
-          setSettingsTab('printer');
+        onSelectCategoryShortcut={(shortcutKey) => {
+          setSelectedCategory(shortcutKey);
+          setCurrentView('order');
         }}
+        settings={settings}
       />
 
-      {/* Cash Drawer Kick & Manual Audit Modal */}
+      {/* Cash Drawer Modal */}
       <CashDrawerModal
         isOpen={isCashDrawerOpen}
         onClose={() => setIsCashDrawerOpen(false)}
@@ -837,7 +899,7 @@ export default function App() {
         onUpdateSettings={handleUpdateSettings}
       />
 
-      {/* Assign Table or Takeaway Modal (Triggered by Save button) */}
+      {/* Assign Table or Takeaway Modal */}
       <AssignTableModal
         isOpen={showAssignModal}
         tables={tables}
@@ -846,10 +908,10 @@ export default function App() {
         onClose={() => setShowAssignModal(false)}
         onAssignTakeaway={handleAssignTakeaway}
         onAssignTable={handleAssignTable}
-        onHoldOnly={handleHoldOrderAndCloseModal}
+        onHoldOnly={handleHoldOrder}
       />
 
-      {/* Item Customizer Modal Sheet (Options, Modifiers, Notes) */}
+      {/* Item Customizer Modal Sheet */}
       {customizerItem && (
         <ItemCustomizerModal
           item={customizerItem}
@@ -860,7 +922,9 @@ export default function App() {
             setCustomizerItem(null);
             setEditingLine(null);
           }}
-          onConfirm={handleConfirmItemCustomizer}
+          onConfirm={(qty, opts, mods, nts) =>
+            handleConfirmItemCustomizer(qty, opts, mods, nts, editingLine?.id)
+          }
         />
       )}
 
@@ -874,7 +938,7 @@ export default function App() {
         />
       )}
 
-      {/* Payment / Checkout Modal (Cash, PromptPay QR, Card, Wallet) */}
+      {/* Payment / Checkout Modal */}
       {showPaymentModal && (
         <PaymentModal
           order={currentOrder}
@@ -895,12 +959,18 @@ export default function App() {
         />
       )}
 
-      {/* Menu Item Editor Modal (Add/Edit) */}
+      {/* Menu Item Editor Modal */}
       {itemEditorState.isOpen && (
         <MenuItemEditorModal
           item={itemEditorState.item}
           categories={categories}
-          defaultCategoryId={selectedCategory !== 'all' && selectedCategory !== 'favorites' && selectedCategory !== 'categories' ? selectedCategory : undefined}
+          defaultCategoryId={
+            selectedCategory !== 'all' &&
+            selectedCategory !== 'favorites' &&
+            selectedCategory !== 'categories'
+              ? selectedCategory
+              : undefined
+          }
           onClose={() => setItemEditorState({ isOpen: false, item: null })}
           onSave={handleSaveMenuItem}
         />

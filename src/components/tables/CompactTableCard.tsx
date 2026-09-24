@@ -36,14 +36,14 @@ export const CompactTableCard: React.FC<CompactTableCardProps> = ({
         sound.playTap();
         onSelect(table);
       }}
-      className={`p-2.5 sm:p-3 rounded-2xl border-2 transition-all flex flex-col justify-between min-h-[76px] cursor-pointer select-none shadow-xs hover:shadow-md active:scale-[0.98] ${
+      className={`p-2.5 sm:p-3 rounded-2xl transition-all flex flex-col justify-between min-h-[76px] cursor-pointer select-none shadow-xs hover:shadow-md active:scale-[0.98] ${
         isAvailable
-          ? 'bg-white border-slate-200 hover:border-emerald-500 text-slate-800'
+          ? 'bg-emerald-50/40 border-[3px] border-[#047857] text-slate-800'
           : isOccupied
-          ? 'bg-orange-50/50 border-orange-500 hover:border-orange-600 text-orange-950 ring-1 ring-orange-500/20'
+          ? 'bg-orange-50 border-[3px] border-[#dc2626] text-orange-950'
           : isBilled
-          ? 'bg-sky-50/50 border-sky-500 hover:border-sky-600 text-sky-950 ring-1 ring-sky-500/20'
-          : 'bg-slate-50 border-slate-200 text-slate-500'
+          ? 'bg-rose-50 border-[3px] border-[#dc2626] text-rose-950'
+          : 'bg-blue-50 border-[3px] border-[#2563eb] text-slate-900'
       }`}
     >
       {/* Top row: Table name & Status indicator */}

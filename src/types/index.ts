@@ -75,14 +75,15 @@ export interface OrderLine {
   menuItemId: string;
   name_th: string;
   name_en: string;
-  basePrice: number;
+  basePrice?: number;
   unitPrice: number;
   cost?: number;
   quantity: number;
+  subtotal?: number;
   selectedOptions: SelectedOption[];
   modifiers: string[]; // quick notes like "เผ็ดน้อย"
   notes?: string;
-  round: number;
+  round?: number;
   status: LineStatus;
   sentAt?: number;
   voidReason?: string;
@@ -109,6 +110,7 @@ export interface Order {
   tableId?: string;
   tableName?: string;
   customerCount?: number;
+  guestCount?: number;
   lines: OrderLine[];
   
   // Financials
@@ -263,4 +265,23 @@ export interface Customer {
   visitCount: number;
   createdAt: number;
   lastVisitAt?: number;
+}
+
+export type UserRole = 'owner' | 'cashier' | 'waiter';
+
+export interface AppUser {
+  id: string;
+  name: string;
+  role: UserRole;
+  pin: string;
+}
+
+export interface InAppNotification {
+  id: string;
+  type: 'call_waiter' | 'request_bill' | 'order' | 'info' | 'system';
+  message_th: string;
+  message_en: string;
+  tableName?: string;
+  timestamp: number;
+  read: boolean;
 }

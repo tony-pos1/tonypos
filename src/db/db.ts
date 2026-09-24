@@ -9,13 +9,13 @@ import {
   Order,
   ShiftRecord,
 } from '../types';
-import { defaultCategories, defaultMenuItems, defaultSettings } from './seedData';
-
-export const defaultZones: FloorZone[] = [
-  { id: 'zone_1', name: 'Indoor / ในร้าน', sortOrder: 1 },
-  { id: 'zone_2', name: 'Terrace / หน้าร้าน', sortOrder: 2 },
-  { id: 'zone_3', name: 'VIP Room / ห้องส่วนตัว', sortOrder: 3 },
-];
+import {
+  defaultCategories,
+  defaultMenuItems,
+  defaultSettings,
+  defaultTables,
+  defaultZones,
+} from './seedData';
 
 export class RestaurantDatabase extends Dexie {
   categories!: Table<MenuCategory, string>;
@@ -102,23 +102,8 @@ export async function bootstrapDatabase(): Promise<void> {
     await db.menuItems.bulkPut(defaultMenuItems);
     await db.zones.bulkPut(defaultZones);
 
-    // Seed initial 10 tables
-    const initialTables: DiningTable[] = Array.from({ length: 10 }, (_, i) => ({
-      id: `table_${i + 1}`,
-      name: `T${i + 1}`,
-      zone: i < 5 ? 'Indoor / ในร้าน' : 'Terrace / หน้าร้าน',
-      seats: i === 0 || i === 5 ? 2 : i < 4 ? 4 : 6,
-      shape: i === 0 ? 'round' : i === 3 ? 'rectangle' : 'square',
-      itemType: 'table',
-      showAutoChairs: true,
-      x: (i % 5) * 130 + 40,
-      y: Math.floor(i / 5) * 140 + 60,
-      width: i === 3 ? 120 : 80,
-      height: 80,
-      rotation: 0,
-      status: 'available',
-    }));
-    await db.diningTables.bulkPut(initialTables);
+    // Seed initial 12 tables in 3 zones
+    await db.diningTables.bulkPut(defaultTables);
   } else {
     // Ensure zones exist
     const zoneCount = await db.zones.count();

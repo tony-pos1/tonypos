@@ -22,15 +22,13 @@ import {
   Utensils,
   ShoppingBag,
   Bike,
-  Send,
+  CheckCircle,
   CreditCard,
   PauseCircle,
   RotateCcw,
   Percent,
-  Tag,
-  Hash,
-  BookmarkCheck,
-  Save,
+  AlertTriangle,
+  Send,
 } from 'lucide-react';
 
 interface OrderPanelProps {
@@ -39,9 +37,9 @@ interface OrderPanelProps {
   heldOrdersCount: number;
   onUpdateLines: (lines: OrderLine[]) => void;
   onUpdateOrderType: (type: OrderType) => void;
-  onSendToKitchen: () => void;
+  onConfirmOrder: () => void;
+  onSaveOrderAndNavigateToTables: () => void;
   onHoldOrder: () => void;
-  onSaveOrder?: () => void;
   onOpenHeldOrders: () => void;
   onClearOrder: () => void;
   onEditModifiers: (line: OrderLine) => void;
@@ -55,9 +53,9 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
   heldOrdersCount,
   onUpdateLines,
   onUpdateOrderType,
-  onSendToKitchen,
+  onConfirmOrder,
+  onSaveOrderAndNavigateToTables,
   onHoldOrder,
-  onSaveOrder,
   onOpenHeldOrders,
   onClearOrder,
   onEditModifiers,
@@ -69,12 +67,13 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
   const [discountVal, setDiscountVal] = useState<number>(0);
   const [discountMode, setDiscountMode] = useState<'baht' | 'percent'>('baht');
   const [discountReason, setDiscountReason] = useState('');
+  const [showSaveBeforePayModal, setShowSaveBeforePayModal] = useState(false);
 
   // Sensors for @dnd-kit
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // Require 8px drag before starting to prevent accidental drags on taps
+        distance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -99,7 +98,6 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
     }
   };
 
-  // Arrow button reorder handlers
   const handleMoveUp = (index: number) => {
     if (index <= 0) return;
     sound.playTap();
@@ -114,7 +112,6 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
     onUpdateLines(newLines);
   };
 
-  // Quantity updates
   const handleUpdateQuantity = (lineId: string, delta: number) => {
     const updated = order.lines.map((line) => {
       if (line.id === lineId) {
@@ -126,13 +123,11 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
     onUpdateLines(updated);
   };
 
-  // Delete line (unsent)
   const handleDeleteLine = (lineId: string) => {
     const updated = order.lines.filter((l) => l.id !== lineId);
     onUpdateLines(updated);
   };
 
-  // Void line (already sent to kitchen)
   const handleVoidLine = (lineId: string, reason: string) => {
     sound.playNotificationChime();
     const updated = order.lines.map((l) => {
@@ -144,7 +139,6 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
     onUpdateLines(updated);
   };
 
-  // Discount modal save
   const handleSaveDiscount = () => {
     sound.playTap();
     let calculatedDiscount = 0;
@@ -157,21 +151,37 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
     setShowDiscountModal(false);
   };
 
+  // SAVE-BEFORE-PAY RULE HELPER
+  const handlePayClick = () => {
+    if (activeLines.length === 0) {
+      sound.playWarningBeep();
+      return;
+    }
+    if (hasUnsentLines) {
+      sound.playWarningBeep();
+      setShowSaveBeforePayModal(true);
+      return;
+    }
+    sound.playTap();
+    onCheckout();
+  };
+
   return (
-    <div className="flex flex-col h-full bg-white border-l border-slate-200 select-none overflow-hidden">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 select-none overflow-hidden">
       {/* Top Header: Order Type and Table / Order Identifier */}
-      <div className="p-3 bg-white border-b border-slate-100 flex flex-col gap-2 shrink-0">
+      <div className="p-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-2 shrink-0">
         {/* Order Type Tabs: Dine-in / Takeaway / Delivery */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl">
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
           <button
+            type="button"
             onClick={() => {
               sound.playTap();
               onUpdateOrderType('dine_in');
             }}
             className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition cursor-pointer ${
               order.orderType === 'dine_in'
-                ? 'bg-white text-orange-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <Utensils className="w-3.5 h-3.5" />
@@ -179,14 +189,15 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={() => {
               sound.playTap();
               onUpdateOrderType('takeaway');
             }}
             className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition cursor-pointer ${
               order.orderType === 'takeaway'
-                ? 'bg-white text-orange-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <ShoppingBag className="w-3.5 h-3.5" />
@@ -194,14 +205,15 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={() => {
               sound.playTap();
               onUpdateOrderType('delivery');
             }}
             className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition cursor-pointer ${
               order.orderType === 'delivery'
-                ? 'bg-white text-orange-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <Bike className="w-3.5 h-3.5" />
@@ -212,51 +224,36 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
         {/* Order info and table / queue identifier */}
         <div className="flex items-center justify-between text-xs pt-0.5">
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-slate-900 text-sm">
+            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">
               {order.orderType === 'dine_in'
                 ? order.tableName || `${t('table')} -`
                 : order.orderType === 'takeaway'
                 ? `${language === 'th' ? 'กลับบ้าน' : 'Takeaway'} ${order.queueNumber ? `Q#${order.queueNumber}` : `#${order.id.slice(-4)}`}`
                 : `${language === 'th' ? 'เดลิเวอรี' : 'Delivery'} #${order.id.slice(-4)}`}
             </span>
+            {order.guestCount && order.guestCount > 0 ? (
+              <span className="text-[10px] text-slate-400">
+                ({order.guestCount} {language === 'th' ? 'ท่าน' : 'guests'})
+              </span>
+            ) : null}
           </div>
 
-          <div className="flex items-center gap-1">
-            {heldOrdersCount > 0 && (
-              <button
-                onClick={onOpenHeldOrders}
-                className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold flex items-center gap-1 hover:bg-amber-100 cursor-pointer"
-                title={t('heldOrders')}
-              >
-                <PauseCircle className="w-3 h-3 text-amber-600" />
-                <span>{heldOrdersCount}</span>
-              </button>
-            )}
-
-            <button
-              onClick={onClearOrder}
-              disabled={activeLines.length === 0}
-              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 disabled:opacity-30 cursor-pointer"
-              title={t('clearOrder')}
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
+          <div className="flex items-center gap-1 text-[11px] text-slate-400">
+            <span>{activeLines.length} {t('orderLinesCount')}</span>
           </div>
         </div>
       </div>
 
-      {/* Center: Scrollable Order Line Items with Drag Reorder */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {activeLines.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
-            <ShoppingBag className="w-10 h-10 text-slate-300 mb-2 stroke-[1.5]" />
-            <p className="text-sm font-semibold text-slate-600">
-              {language === 'th' ? 'ยังไม่มีรายการอาหาร' : 'No items yet'}
+      {/* Lines List (DndContext Scrollable) */}
+      <div className="flex-1 overflow-y-auto p-2.5 space-y-2 scrollbar-thin">
+        {order.lines.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
+            <Utensils className="w-8 h-8 mb-2 opacity-30 text-orange-500" />
+            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+              {t('emptyOrderTitle')}
             </p>
-            <p className="text-xs text-slate-400 mt-1 max-w-[200px]">
-              {language === 'th'
-                ? 'เลือกรายการอาหารจากเมนูทางซ้ายเพื่อเพิ่มลงในออเดอร์'
-                : 'Select menu items from the left to add them to this order'}
+            <p className="text-[11px] text-slate-400 mt-1 max-w-[200px]">
+              {t('emptyOrderDesc')}
             </p>
           </div>
         ) : (
@@ -269,18 +266,18 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
               items={order.lines.map((l) => l.id)}
               strategy={verticalListSortingStrategy}
             >
-              {order.lines.map((line, idx) => (
+              {order.lines.map((line, index) => (
                 <OrderLineItem
                   key={line.id}
                   line={line}
-                  index={idx}
+                  index={index}
                   totalLines={order.lines.length}
-                  onMoveUp={handleMoveUp}
-                  onMoveDown={handleMoveDown}
                   onUpdateQuantity={handleUpdateQuantity}
-                  onEditModifiers={onEditModifiers}
                   onDeleteLine={handleDeleteLine}
                   onVoidLine={handleVoidLine}
+                  onEditModifiers={onEditModifiers}
+                  onMoveUp={handleMoveUp}
+                  onMoveDown={handleMoveDown}
                 />
               ))}
             </SortableContext>
@@ -288,139 +285,180 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
         )}
       </div>
 
-      {/* Bottom Summary & Financial Breakdown */}
-      <div className="border-t border-slate-200 bg-slate-50 p-3.5 space-y-3 shrink-0">
-        {/* Financial Line Breakdowns */}
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between text-slate-600">
-            <span>{t('subtotal')}</span>
-            <span className="font-semibold text-slate-900">
-              ฿{order.subtotal.toFixed(2)}
-            </span>
-          </div>
+      {/* Bill Financial Summary */}
+      <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-xs space-y-1.5 shrink-0">
+        <div className="flex justify-between text-slate-500 dark:text-slate-400">
+          <span>{t('subtotal')}</span>
+          <span className="font-semibold text-slate-800 dark:text-slate-200">
+            ฿{order.subtotal.toFixed(2)}
+          </span>
+        </div>
 
-          {/* Discount Trigger / Display */}
-          <div className="flex justify-between items-center text-slate-600">
+        {/* Discount Row */}
+        <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-1">
+            <span>{t('discount')}</span>
             <button
+              type="button"
               onClick={() => {
                 sound.playTap();
                 setShowDiscountModal(true);
               }}
-              className="text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1 cursor-pointer"
+              className="text-[10px] text-orange-600 hover:underline font-bold cursor-pointer"
             >
-              <Tag className="w-3 h-3" />
-              <span>
-                {order.discountAmount > 0
-                  ? `${t('discount')} (${order.discountReason || 'Promotion'})`
-                  : `+ ${t('discount')}`}
-              </span>
+              [{order.discountAmount > 0 ? (language === 'th' ? 'แก้ไข' : 'Edit') : (language === 'th' ? '+เพิ่ม' : '+Add')}]
             </button>
-            {order.discountAmount > 0 ? (
-              <span className="font-semibold text-rose-600">
-                -฿{order.discountAmount.toFixed(2)}
-              </span>
-            ) : (
-              <span>฿0.00</span>
-            )}
           </div>
-
-          {/* Service Charge (if enabled) */}
-          {settings.serviceChargeEnabled && (
-            <div className="flex justify-between text-slate-600">
-              <span>
-                {t('serviceCharge')} ({order.serviceChargeRate}%)
-              </span>
-              <span className="font-semibold text-slate-900">
-                +฿{order.serviceChargeAmount.toFixed(2)}
-              </span>
-            </div>
-          )}
-
-          {/* VAT breakdown (if enabled) */}
-          {settings.vatEnabled && (
-            <div className="flex justify-between text-slate-500 text-[11px]">
-              <span>
-                {t('vat')} ({order.vatRate}%{' '}
-                {settings.priceIncludeTax ? t('vatIncluded') : t('vatExcluded')})
-              </span>
-              <span>฿{order.vatAmount.toFixed(2)}</span>
-            </div>
-          )}
-
-          {/* Net Total */}
-          <div className="flex justify-between text-base font-black text-slate-900 pt-1.5 border-t border-slate-200">
-            <span>{t('netTotal')}</span>
-            <span className="text-orange-600 text-lg">
-              ฿{order.netTotal.toFixed(2)}
-            </span>
-          </div>
+          <span className="font-semibold text-rose-600">
+            {order.discountAmount > 0 ? `-฿${order.discountAmount.toFixed(2)}` : '฿0.00'}
+          </span>
         </div>
 
-        {/* Action Buttons: Save (Hold/Assign to Table), Kitchen, Checkout */}
-        <div className="grid grid-cols-3 gap-1.5 pt-1">
-          {/* Save / Hold Button */}
-          <button
-            onClick={() => {
-              sound.playTap();
-              if (onSaveOrder) {
-                onSaveOrder();
-              } else {
-                onHoldOrder();
-              }
-            }}
-            disabled={activeLines.length === 0}
-            className="py-2.5 px-2 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-300 text-slate-700 font-bold text-xs flex flex-col items-center justify-center gap-1 transition cursor-pointer min-h-[46px] shadow-2xs"
-            title={language === 'th' ? 'บันทึกออเดอร์ลงโต๊ะหรือคิว' : 'Save / Hold order'}
-          >
-            <BookmarkCheck className="w-4 h-4 text-orange-600" />
-            <span className="truncate">{t('save')}</span>
-          </button>
+        {/* Net Total Display */}
+        <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-baseline">
+          <div>
+            <span className="font-black text-sm text-slate-900 dark:text-slate-100">
+              {t('netTotal')}
+            </span>
+          </div>
+          <div className="text-xl font-black text-orange-600 dark:text-orange-500">
+            ฿{order.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+      </div>
 
-          {/* Send to Kitchen Button */}
+      {/* Action Buttons Toolbar */}
+      <div className="p-2.5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-2 shrink-0">
+        <div className="grid grid-cols-2 gap-2">
+          {/* Confirm Order Button (Saves draft lines to table / open bills) */}
           <button
+            type="button"
             onClick={() => {
               sound.playTap();
-              onSendToKitchen();
+              onConfirmOrder();
             }}
             disabled={!hasUnsentLines}
-            className="py-2.5 px-2 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-300 text-slate-700 font-bold text-xs flex flex-col items-center justify-center gap-1 transition cursor-pointer min-h-[46px] shadow-2xs"
+            className="py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer min-h-[46px]"
           >
-            <Send className="w-4 h-4 text-orange-600" />
-            <span className="truncate">{t('sendToKitchen')}</span>
+            <CheckCircle className="w-4 h-4" />
+            <span className="truncate">
+              {language === 'th' ? 'ยืนยันออเดอร์' : 'Confirm Order'}
+            </span>
           </button>
 
-          {/* Pay / Checkout Button */}
+          {/* Pay / Checkout Button (Enforces Save-Before-Pay Rule) */}
           <button
-            onClick={() => {
-              sound.playTap();
-              onCheckout();
-            }}
+            type="button"
+            onClick={handlePayClick}
             disabled={activeLines.length === 0}
-            className="py-2.5 px-2 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs flex flex-col items-center justify-center gap-1 shadow-xs transition cursor-pointer min-h-[46px]"
+            className="py-2.5 px-2 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer min-h-[46px]"
           >
             <CreditCard className="w-4 h-4" />
             <span className="truncate">{t('checkoutButton')}</span>
           </button>
         </div>
+
+        {/* Secondary Action Row: Hold Order & Clear Order */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              sound.playTap();
+              if (heldOrdersCount > 0) onOpenHeldOrders();
+              else onHoldOrder();
+            }}
+            disabled={activeLines.length === 0 && heldOrdersCount === 0}
+            className="py-1.5 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition cursor-pointer flex items-center justify-center gap-1"
+          >
+            <PauseCircle className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-[11px] truncate">
+              {heldOrdersCount > 0
+                ? `${language === 'th' ? 'บิลพักไว้' : 'Held'} (${heldOrdersCount})`
+                : (language === 'th' ? 'พักบิล' : 'Hold')}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              sound.playTap();
+              if (window.confirm(t('confirmClearOrder'))) {
+                onClearOrder();
+              }
+            }}
+            disabled={order.lines.length === 0}
+            className="py-1.5 px-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 font-semibold transition cursor-pointer flex items-center justify-center gap-1"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="text-[11px] truncate">{t('clearOrder')}</span>
+          </button>
+        </div>
       </div>
+
+      {/* SAVE-BEFORE-PAY RULE MODAL */}
+      {showSaveBeforePayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs select-none">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 max-w-sm w-full shadow-2xl text-slate-900 dark:text-slate-100 animate-in fade-in zoom-in-95">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold">
+                  {language === 'th' ? 'มีรายการที่ยังไม่ได้บันทึก' : 'Unsaved Items'}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {language === 'th'
+                    ? 'คุณมีรายการที่ยังไม่ได้บันทึก กรุณาบันทึกออเดอร์ลงโต๊ะก่อน'
+                    : 'You have items that are not saved yet. Please save the order to the table first.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playTap();
+                  setShowSaveBeforePayModal(false);
+                  onSaveOrderAndNavigateToTables();
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
+              >
+                {language === 'th'
+                  ? 'บันทึกออเดอร์และไปที่ผังโต๊ะ'
+                  : 'Save order and go to floor plan'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSaveBeforePayModal(false)}
+                className="w-full py-2 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+              >
+                {language === 'th' ? 'ยกเลิก' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Discount Dialog Modal */}
       {showDiscountModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs select-none">
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 max-w-sm w-full shadow-2xl text-slate-900 animate-in fade-in zoom-in-95">
-            <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-1.5">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 max-w-sm w-full shadow-2xl text-slate-900 dark:text-slate-100 animate-in fade-in zoom-in-95">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-3 flex items-center gap-1.5">
               <Percent className="w-4 h-4 text-orange-600" />
               <span>{t('discount')}</span>
             </h4>
 
-            <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200 mb-3">
+            <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700 mb-3">
               <button
                 type="button"
                 onClick={() => setDiscountMode('baht')}
                 className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
                   discountMode === 'baht'
-                    ? 'bg-white text-orange-600 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
                 บาท (THB)
@@ -430,8 +468,8 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
                 onClick={() => setDiscountMode('percent')}
                 className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
                   discountMode === 'percent'
-                    ? 'bg-white text-orange-600 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
                 เปอร์เซ็นต์ (%)
@@ -440,7 +478,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
 
             <div className="space-y-2 mb-4">
               <div>
-                <label className="text-xs text-slate-700 font-semibold block mb-1">
+                <label className="text-xs text-slate-700 dark:text-slate-300 font-semibold block mb-1">
                   จำนวนส่วนลด ({discountMode === 'baht' ? '฿' : '%'})
                 </label>
                 <input
@@ -448,12 +486,12 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
                   min={0}
                   value={discountVal || ''}
                   onChange={(e) => setDiscountVal(Number(e.target.value) || 0)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-orange-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-orange-500"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-slate-700 font-semibold block mb-1">
+                <label className="text-xs text-slate-700 dark:text-slate-300 font-semibold block mb-1">
                   เหตุผล / ชื่อโปรโมชั่น
                 </label>
                 <input
@@ -461,7 +499,7 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
                   placeholder="เช่น ลูกค้าประจำ, พนักงาน"
                   value={discountReason}
                   onChange={(e) => setDiscountReason(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-orange-500"
                 />
               </div>
             </div>
@@ -470,14 +508,14 @@ export const OrderPanel: React.FC<OrderPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setShowDiscountModal(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
               >
                 {t('cancel')}
               </button>
               <button
                 type="button"
                 onClick={handleSaveDiscount}
-                className="px-4 py-1.5 text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white rounded-xl cursor-pointer shadow-xs"
+                className="px-4 py-1.5 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white rounded-xl cursor-pointer shadow-xs"
               >
                 {t('save')}
               </button>

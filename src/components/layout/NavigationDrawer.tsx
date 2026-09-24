@@ -2,8 +2,8 @@ import React from 'react';
 import { useI18n } from '../../i18n';
 import { sound } from '../../utils/sound';
 import {
-  Zap,
   LayoutGrid,
+  Zap,
   ReceiptText,
   UtensilsCrossed,
   Users,
@@ -11,20 +11,20 @@ import {
   BarChart3,
   Settings,
   X,
-  Globe,
-  Database,
-  ChefHat,
+  Star,
+  Layers,
+  Grid,
   ChevronRight,
-  Monitor,
-  Printer,
-  Bluetooth,
+  TrendingUp,
+  Shield,
 } from 'lucide-react';
-import { AppSettings } from '../../types';
+import { AppSettings, AppUser } from '../../types';
 
 export type NavView =
   | 'order'
   | 'tables'
   | 'orders'
+  | 'dashboard'
   | 'menu'
   | 'customers'
   | 'promotions'
@@ -35,99 +35,135 @@ interface NavigationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   currentView: NavView;
+  currentUser: AppUser | null;
   onSelectView: (view: NavView) => void;
+  onSelectCategoryShortcut?: (catId: string) => void;
   settings: AppSettings | null;
-  onOpenCustomerDisplayModal?: () => void;
-  onOpenPrinterSettings?: () => void;
 }
 
 export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   isOpen,
   onClose,
   currentView,
+  currentUser,
   onSelectView,
+  onSelectCategoryShortcut,
   settings,
-  onOpenCustomerDisplayModal,
-  onOpenPrinterSettings,
 }) => {
-  const { t, language, toggleLanguage } = useI18n();
+  const { language } = useI18n();
 
   if (!isOpen) return null;
 
-  const navItems = [
-    {
-      id: 'order' as NavView,
-      label_th: 'สั่งด่วน (Quick Order)',
-      label_en: 'Quick Order',
-      desc_th: 'รับออเดอร์หน้าร้าน/กลับบ้าน',
-      desc_en: 'Take orders & takeaway',
-      icon: Zap,
-    },
+  const role = currentUser?.role || 'owner';
+
+  // Base navigation pages
+  const allNavItems = [
     {
       id: 'tables' as NavView,
       label_th: 'ผังโต๊ะอาหาร (Floor Plan)',
-      label_en: 'Floor Plan & Tables',
-      desc_th: 'จัดผังโต๊ะ แยกโซน ดูสถานะโต๊ะ',
-      desc_en: 'Layout, zones & live status',
+      label_en: 'Tables & Floor Plan',
+      desc_th: 'ดูสถานะโต๊ะ โซน และเวลาที่ลูกค้านั่ง',
+      desc_en: 'Table layouts, zones & status',
       icon: LayoutGrid,
+      roles: ['owner', 'cashier', 'waiter'],
+    },
+    {
+      id: 'order' as NavView,
+      label_th: 'สั่งอาหาร / POS (Order Taking)',
+      label_en: 'POS & Order Taking',
+      desc_th: 'เลือกเมนู บันทึกออเดอร์ลงโต๊ะ',
+      desc_en: 'Menu selection & cart',
+      icon: Zap,
+      roles: ['owner', 'cashier', 'waiter'],
     },
     {
       id: 'orders' as NavView,
-      label_th: 'ประวัติบิล (Orders & Bills)',
-      label_en: 'Orders & Bills',
-      desc_th: 'บิลเปิดอยู่ ใบเสร็จ ยกเลิกรายการ',
-      desc_en: 'Open orders, receipts, voids',
+      label_th: 'บิลและประวัติการขาย (Bills / Orders)',
+      label_en: 'Bills & Order History',
+      desc_th: 'บิลที่เปิดอยู่ ชำระเงิน ใบเสร็จ',
+      desc_en: 'Open bills, payment & receipts',
       icon: ReceiptText,
+      roles: ['owner', 'cashier'],
+    },
+    {
+      id: 'dashboard' as NavView,
+      label_th: 'ภาพรวมร้าน (Dashboard)',
+      label_en: 'Store Dashboard',
+      desc_th: 'ยอดขายวันนี้ สถิติโต๊ะ เมนูขายดี',
+      desc_en: 'Today sales, table stats & best sellers',
+      icon: TrendingUp,
+      roles: ['owner'],
     },
     {
       id: 'menu' as NavView,
-      label_th: 'จัดการเมนู (Menu Manager)',
-      label_en: 'Menu Manager',
-      desc_th: 'ลากจัดลำดับ เพิ่ม/แก้เมนูและหมวดหมู่',
-      desc_en: 'Drag reorder, edit items & categories',
+      label_th: 'จัดการเมนูอาหาร (Menu Management)',
+      label_en: 'Menu Management',
+      desc_th: 'เพิ่ม/แก้ไข/ลบเมนู จัดการหมวดหมู่',
+      desc_en: 'Add, edit, reorder foods & categories',
       icon: UtensilsCrossed,
+      roles: ['owner'],
     },
     {
       id: 'customers' as NavView,
       label_th: 'ลูกค้าสมาชิก (Customers)',
       label_en: 'Customers & CRM',
-      desc_th: 'สะสมแต้ม ประวัติการสั่งซื้อ',
-      desc_en: 'Loyalty points & order history',
+      desc_th: 'ระบบสะสมแต้ม ประวัติการใช้บริการ',
+      desc_en: 'Loyalty points & customer info',
       icon: Users,
+      roles: ['owner'],
     },
     {
       id: 'promotions' as NavView,
-      label_th: 'โปรโมชั่น & ส่วนลด (Promotions)',
+      label_th: 'โปรโมชั่น (Promotions)',
       label_en: 'Promotions & Discounts',
-      desc_th: 'ส่วนลดเทศกาล โปรโมชั่นพิเศษ',
-      desc_en: 'Campaigns & discounts',
+      desc_th: 'ส่วนลดพิเศษ แคมเปญหน้าร้าน',
+      desc_en: 'Promotions and special discounts',
       icon: Tag,
+      roles: ['owner'],
     },
     {
       id: 'reports' as NavView,
-      label_th: 'รายงานการขาย (Sales Reports)',
-      label_en: 'Sales & Audit Reports',
-      desc_th: 'ยอดขายประจำวัน รายงานยกเลิก แชร์ LINE',
-      desc_en: 'Daily revenue, voids & LINE share',
+      label_th: 'รายงานการขาย (Reports)',
+      label_en: 'Sales Reports',
+      desc_th: 'สรุปยอดขาย การยกเลิก การชำระเงิน',
+      desc_en: 'Daily revenue, voids and payment report',
       icon: BarChart3,
+      roles: ['owner'],
     },
     {
       id: 'settings' as NavView,
-      label_th: 'ตั้งค่าระบบ (System Settings)',
+      label_th: 'ตั้งค่าระบบ (Settings)',
       label_en: 'System Settings',
-      desc_th: 'ข้อมูลร้าน เครื่องพิมพ์ สำรอง/กู้คืนข้อมูล',
-      desc_en: 'Shop profile, printers & backup',
+      desc_th: 'ข้อมูลร้าน บิลใบเสร็จ พรอมต์เพย์ สำรองข้อมูล',
+      desc_en: 'Shop details, receipt, PromptPay, backup',
       icon: Settings,
+      roles: ['owner'],
     },
   ];
 
-  const displayName = language === 'th' ? settings?.shopName_th : settings?.shopName_en;
+  // Filter items visible to user role
+  const visibleNavItems = allNavItems.filter((item) => item.roles.includes(role));
+
+  const handleSelectPage = (viewId: NavView) => {
+    sound.playTap();
+    onSelectView(viewId);
+    onClose();
+  };
+
+  const handleShortcut = (shortcutKey: string) => {
+    sound.playTap();
+    onSelectView('order');
+    if (onSelectCategoryShortcut) {
+      onSelectCategoryShortcut(shortcutKey);
+    }
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex select-none animate-in fade-in duration-200">
       {/* Dimmed Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
         onClick={() => {
           sound.playTap();
           onClose();
@@ -135,19 +171,19 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
       />
 
       {/* Drawer Panel */}
-      <aside className="relative ml-auto w-full max-w-sm sm:max-w-md bg-white text-slate-900 shadow-2xl flex flex-col h-full border-l border-slate-200 z-10 animate-in slide-in-from-right duration-250">
+      <aside className="relative ml-auto w-full max-w-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl flex flex-col h-full border-l border-slate-200 dark:border-slate-800 z-10 animate-in slide-in-from-right duration-250">
         {/* Drawer Header */}
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-200 flex items-center justify-center p-1.5 shadow-xs">
-              <ChefHat className="w-6 h-6 text-orange-600" />
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center font-black text-sm">
+              K
             </div>
             <div>
-              <h2 className="text-base font-black text-slate-900 leading-tight">
-                {displayName || t('appName')}
-              </h2>
-              <p className="text-xs text-slate-500 font-medium">
-                {language === 'th' ? 'เมนูระบบ POS ร้านอาหาร' : 'Restaurant POS System'}
+              <h3 className="font-black text-sm text-slate-900 dark:text-slate-100 tracking-tight">
+                KinD POS
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {language === 'th' ? 'เมนูระบบหลัก' : 'Main Navigation'}
               </p>
             </div>
           </div>
@@ -157,149 +193,145 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               sound.playTap();
               onClose();
             }}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center"
-            aria-label="Close menu"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
+            title="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Navigation List */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  sound.playTap();
-                  onSelectView(item.id);
-                  onClose();
-                }}
-                className={`w-full text-left p-3 rounded-2xl flex items-center justify-between transition cursor-pointer min-h-[52px] ${
-                  isActive
-                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20 font-bold'
-                    : 'bg-white hover:bg-slate-100 text-slate-800 border border-transparent hover:border-slate-200'
-                }`}
-              >
-                <div className="flex items-center gap-3.5">
+        {/* User Card */}
+        {currentUser && (
+          <div className="px-4 py-2.5 bg-orange-50/60 dark:bg-orange-950/30 border-b border-orange-100 dark:border-orange-900/40 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+              <div>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {currentUser.name}
+                </span>
+                <span className="text-[10px] text-orange-700 dark:text-orange-400 ml-1.5 font-semibold">
+                  ({currentUser.role.toUpperCase()})
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] text-slate-400">Online</span>
+          </div>
+        )}
+
+        {/* Drawer Body Scrollable */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-4 scrollbar-thin">
+          {/* Main Pages */}
+          <div className="space-y-1">
+            <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              {language === 'th' ? 'หน้าหลักระบบ' : 'Pages'}
+            </p>
+            {visibleNavItems.map((item) => {
+              const isSelected = currentView === item.id;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleSelectPage(item.id)}
+                  className={`w-full p-2.5 rounded-2xl flex items-center gap-3 transition text-left cursor-pointer ${
+                    isSelected
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
                   <div
                     className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-orange-50 text-orange-600'
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-orange-600 dark:text-orange-400'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
+                    <Icon className="w-4 h-4" />
                   </div>
-                  <div>
-                    <div className="text-sm leading-tight">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-xs truncate">
                       {language === 'th' ? item.label_th : item.label_en}
                     </div>
                     <div
-                      className={`text-[11px] leading-tight mt-0.5 ${
-                        isActive ? 'text-orange-100' : 'text-slate-400'
+                      className={`text-[10px] truncate ${
+                        isSelected ? 'text-white/80' : 'text-slate-400 dark:text-slate-500'
                       }`}
                     >
                       {language === 'th' ? item.desc_th : item.desc_en}
                     </div>
                   </div>
-                </div>
+                  <ChevronRight
+                    className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-slate-300'}`}
+                  />
+                </button>
+              );
+            })}
+          </div>
 
-                <ChevronRight
-                  className={`w-4 h-4 shrink-0 transition-transform ${
-                    isActive ? 'text-white translate-x-0.5' : 'text-slate-300'
-                  }`}
-                />
-              </button>
-            );
-          })}
-        </nav>
+          {/* Section: Shortcuts for Food Menu (Requested by User) */}
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
+            <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              {language === 'th' ? 'เมนูอาหาร (Food Menu)' : 'Food Menu'}
+            </p>
 
-        {/* Dual-Screen Customer Display Shortcut */}
-        {onOpenCustomerDisplayModal && (
-          <div className="px-3 pb-2">
+            {/* Categories Screen Shortcut */}
             <button
-              onClick={() => {
-                sound.playTap();
-                onClose();
-                onOpenCustomerDisplayModal();
-              }}
-              className="w-full p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-left transition flex items-center justify-between cursor-pointer shadow-2xs"
+              onClick={() => handleShortcut('categories')}
+              className="w-full p-2.5 rounded-2xl flex items-center gap-3 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shrink-0">
-                  <Monitor className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-orange-950/50 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
+                <Grid className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-xs truncate">
+                  {language === 'th' ? 'หมวดหมู่ (Categories)' : 'Categories'}
                 </div>
-                <div>
-                  <div className="text-xs font-black text-orange-950">
-                    {language === 'th' ? 'ระบบ 2 หน้าจอ (จอหลัง)' : 'Dual Screen Customer Display'}
-                  </div>
-                  <div className="text-[11px] text-orange-800/80">
-                    {language === 'th' ? 'เปิดจอหลัง & อัปโหลด QR ร้าน' : 'Open screen 2 & shop QR'}
-                  </div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  {language === 'th' ? 'เปิดดูหมวดหมู่ทั้งหมด' : 'Browse by categories'}
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-orange-600 shrink-0" />
             </button>
-          </div>
-        )}
 
-        {/* Bluetooth Thermal Printer Shortcut */}
-        {onOpenPrinterSettings && (
-          <div className="px-3 pb-3">
+            {/* All Menu Shortcut */}
             <button
-              onClick={() => {
-                sound.playTap();
-                onClose();
-                onOpenPrinterSettings();
-              }}
-              className="w-full p-3 rounded-2xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-left transition flex items-center justify-between cursor-pointer shadow-2xs"
+              onClick={() => handleShortcut('all')}
+              className="w-full p-2.5 rounded-2xl flex items-center gap-3 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0">
-                  <Printer className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-xs truncate">
+                  {language === 'th' ? 'เมนูทั้งหมด (All Menu)' : 'All Menu'}
                 </div>
-                <div>
-                  <div className="text-xs font-black text-sky-950">
-                    {language === 'th' ? 'เครื่องพิมพ์บลูทูธ (Bluetooth Printer)' : 'Bluetooth Printer'}
-                  </div>
-                  <div className="text-[11px] text-sky-800/80">
-                    {language === 'th' ? 'เชื่อมต่อเครื่องพิมพ์บิล & พิมพ์ทดสอบ' : 'Connect printer & test print'}
-                  </div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  {language === 'th' ? 'แสดงรายการอาหารทุกหมวด' : 'Show all menu items'}
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-sky-600 shrink-0" />
             </button>
-          </div>
-        )}
 
-        {/* Language & Local DB Footer */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <Globe className="w-4 h-4 text-orange-500" />
-              <span>{t('language')}</span>
-            </span>
-
+            {/* Favorites Shortcut */}
             <button
-              onClick={() => {
-                sound.playTap();
-                toggleLanguage();
-              }}
-              className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs min-h-[36px]"
+              onClick={() => handleShortcut('favorites')}
+              className="w-full p-2.5 rounded-2xl flex items-center gap-3 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left cursor-pointer"
             >
-              <span>{language === 'th' ? '🇹🇭 ภาษาไทย' : '🇬🇧 English'}</span>
-              <span className="text-[10px] text-orange-600 font-semibold">(สลับ)</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-500 flex items-center justify-center shrink-0">
+                <Star className="w-4 h-4 fill-amber-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-xs truncate">
+                  {language === 'th' ? 'รายการโปรด (Favorites)' : 'Favorites'}
+                </div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  {language === 'th' ? 'เมนูขายดีที่ติดดาว' : 'Starred favorite dishes'}
+                </div>
+              </div>
             </button>
           </div>
+        </div>
 
-          <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <span>IndexedDB Offline-First</span>
-            </div>
-            <span className="font-mono text-[10px] text-slate-400">v2.0 (Light)</span>
-          </div>
+        {/* Drawer Footer */}
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800 text-center text-[10px] text-slate-400">
+          KinD POS v2.5 • Thai Restaurant System
         </div>
       </aside>
     </div>
