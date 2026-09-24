@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { AppSettings } from '../../types';
+import { AppSettings, AppUser, UserRole } from '../../types';
+import { demoUsers } from '../../db/seedData';
 import { useI18n } from '../../i18n';
 import {
   exportDatabaseBackup,
@@ -30,13 +31,17 @@ import {
   Unlink,
   RefreshCw,
   Zap,
+  Users,
+  Plus,
+  Trash2,
+  Edit2,
 } from 'lucide-react';
 
 interface SettingsViewProps {
   settings: AppSettings;
   onUpdateSettings: (updated: Partial<AppSettings>) => Promise<void>;
   onReloadAllData: () => Promise<void>;
-  initialTab?: 'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer';
+  initialTab?: 'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer' | 'staff';
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -47,11 +52,89 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const { t, language } = useI18n();
 
-  const [activeTab, setActiveTab] = useState<'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer' | 'staff'>(initialTab);
   const [formData, setFormData] = useState<AppSettings>(settings);
   const [newModifier, setNewModifier] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+
+  // Staff management state (NO PIN fields, NO PIN validation)
+  const [staffList, setStaffList] = useState<AppUser[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('kind_pos_staff_list');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {
+        // Ignore
+      }
+    }
+    return demoUsers;
+  });
+
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [staffName, setStaffName] = useState('');
+  const [staffRole, setStaffRole] = useState<UserRole>('cashier');
+
+  const saveStaffToStorage = (list: AppUser[]) => {
+    setStaffList(list);
+    try {
+      localStorage.setItem('kind_pos_staff_list', JSON.stringify(list));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleOpenAddStaff = () => {
+    sound.playTap();
+    setEditingStaffId(null);
+    setStaffName('');
+    setStaffRole('cashier');
+    setStaffModalOpen(true);
+  };
+
+  const handleOpenEditStaff = (staff: AppUser) => {
+    sound.playTap();
+    setEditingStaffId(staff.id);
+    setStaffName(staff.name);
+    setStaffRole(staff.role);
+    setStaffModalOpen(true);
+  };
+
+  const handleDeleteStaff = (id: string) => {
+    if (staffList.length <= 1) {
+      alert(language === 'th' ? 'ต้องมีพนักงานอย่างน้อย 1 คนในระบบ' : 'Must keep at least 1 staff member');
+      return;
+    }
+    if (window.confirm(language === 'th' ? 'ต้องการลบพนักงานคนนี้ใช่หรือไม่?' : 'Delete this staff member?')) {
+      sound.playTap();
+      const updated = staffList.filter((s) => s.id !== id);
+      saveStaffToStorage(updated);
+    }
+  };
+
+  const handleSaveStaff = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!staffName.trim()) return;
+    sound.playTap();
+    if (editingStaffId) {
+      const updated = staffList.map((s) =>
+        s.id === editingStaffId ? { ...s, name: staffName.trim(), role: staffRole } : s
+      );
+      saveStaffToStorage(updated);
+    } else {
+      const newStaff: AppUser = {
+        id: `user_${Date.now()}`,
+        name: staffName.trim(),
+        role: staffRole,
+      };
+      saveStaffToStorage([...staffList, newStaff]);
+    }
+    setStaffModalOpen(false);
+  };
 
   // Bluetooth & Thermal Printer states
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus>(bluetoothPrinter.getStatus());
@@ -338,6 +421,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <Printer className="w-4 h-4" />
           <span>{t('printerTab')}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('staff')}
+          className={`px-3 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2.5 whitespace-nowrap transition cursor-pointer min-h-[44px] ${
+            activeTab === 'staff'
+              ? 'bg-orange-500 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>{language === 'th' ? 'จัดการพนักงาน' : 'Staff Management'}</span>
         </button>
 
         <button
@@ -1316,6 +1411,84 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
 
+          {/* TAB: STAFF MANAGEMENT (NO PIN, NO PIN GENERATOR, NO PIN VALIDATION) */}
+          {activeTab === 'staff' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h3 className="text-base font-bold text-orange-600 flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  <span>{language === 'th' ? 'จัดการข้อมูลพนักงาน' : 'Staff Management'}</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleOpenAddStaff}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs transition cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{language === 'th' ? 'เพิ่มพนักงาน' : 'Add Staff'}</span>
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-500">
+                {language === 'th'
+                  ? 'รายชื่อพนักงานสำหรับบันทึกลงในบิล ใบเสร็จ และประวัติการขาย (ไม่ต้องใช้รหัส PIN)'
+                  : 'Staff list used on receipts, shift records, and order history (No PIN required)'}
+              </p>
+
+              <div className="space-y-2">
+                {staffList.map((member) => (
+                  <div
+                    key={member.id}
+                    className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-sm">
+                        {member.name.slice(0, 1)}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-900">{member.name}</h4>
+                        <span
+                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md mt-0.5 ${
+                            member.role === 'owner'
+                              ? 'bg-purple-100 text-purple-800'
+                              : member.role === 'cashier'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
+                          {member.role === 'owner'
+                            ? language === 'th' ? 'เจ้าของร้าน' : 'Owner'
+                            : member.role === 'cashier'
+                            ? language === 'th' ? 'แคชเชียร์' : 'Cashier'
+                            : language === 'th' ? 'พนักงานเสิร์ฟ' : 'Waiter'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditStaff(member)}
+                        className="p-2 rounded-xl text-slate-500 hover:text-orange-600 hover:bg-orange-50 transition cursor-pointer"
+                        title={language === 'th' ? 'แก้ไข' : 'Edit'}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStaff(member.id)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                        title={language === 'th' ? 'ลบ' : 'Delete'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Form Submit & Feedback */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-200">
             {savedSuccess ? (
@@ -1337,6 +1510,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Add / Edit Staff Modal (No PIN fields, No PIN generator, No PIN validation) */}
+      {staffModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-black text-base text-slate-900">
+              {editingStaffId
+                ? language === 'th' ? 'แก้ไขข้อมูลพนักงาน' : 'Edit Staff'
+                : language === 'th' ? 'เพิ่มพนักงานใหม่' : 'Add New Staff'}
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {language === 'th' ? 'ชื่อพนักงาน' : 'Staff Name'}
+                </label>
+                <input
+                  type="text"
+                  value={staffName}
+                  onChange={(e) => setStaffName(e.target.value)}
+                  placeholder={language === 'th' ? 'เช่น น้องฟ้า' : 'e.g. Fah'}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-orange-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {language === 'th' ? 'ตำแหน่ง / บทบาท' : 'Role'}
+                </label>
+                <select
+                  value={staffRole}
+                  onChange={(e) => setStaffRole(e.target.value as UserRole)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-orange-500 bg-white"
+                >
+                  <option value="owner">{language === 'th' ? 'เจ้าของร้าน (Owner)' : 'Owner'}</option>
+                  <option value="cashier">{language === 'th' ? 'แคชเชียร์ (Cashier)' : 'Cashier'}</option>
+                  <option value="waiter">{language === 'th' ? 'พนักงานเสิร์ฟ (Waiter)' : 'Waiter'}</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setStaffModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-bold transition cursor-pointer"
+              >
+                {language === 'th' ? 'ยกเลิก' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStaff}
+                disabled={!staffName.trim()}
+                className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {language === 'th' ? 'บันทึก' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -44,9 +44,9 @@ export const DEFAULT_SHOP_PROMPTPAY_QR_STAND =
 `);
 
 export const demoUsers: AppUser[] = [
-  { id: 'user_owner', name: 'คุณสมศักดิ์ (Owner)', role: 'owner', pin: '1234' },
-  { id: 'user_cashier', name: 'น้องฟ้า (Cashier)', role: 'cashier', pin: '2345' },
-  { id: 'user_waiter', name: 'น้องนนท์ (Waiter)', role: 'waiter', pin: '3456' },
+  { id: 'user_owner', name: 'คุณสมศักดิ์ (Owner)', role: 'owner' },
+  { id: 'user_cashier', name: 'น้องฟ้า (Cashier)', role: 'cashier' },
+  { id: 'user_waiter', name: 'น้องนนท์ (Waiter)', role: 'waiter' },
 ];
 
 export const defaultSettings: AppSettings = {

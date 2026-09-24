@@ -273,7 +273,7 @@ export interface AppUser {
   id: string;
   name: string;
   role: UserRole;
-  pin: string;
+  pin?: string;
 }
 
 export interface InAppNotification {

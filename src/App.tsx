@@ -33,9 +33,6 @@ import { NavigationDrawer, NavView } from './components/layout/NavigationDrawer'
 import { CashDrawerModal } from './components/layout/CashDrawerModal';
 import { BackupWarningBanner } from './components/common/BackupWarningBanner';
 
-// Auth component
-import { LoginView } from './components/auth/LoginView';
-
 // Order screen components
 import { CategoryTileGrid } from './components/order/CategoryTileGrid';
 import { CategoryTabBar } from './components/order/CategoryTabBar';
@@ -78,22 +75,18 @@ export default function App() {
   const { t, language } = useI18n();
   const { needsBackup, dismissWarning, refreshBackupStatus } = useBackupWarning();
 
-  // Active User State - Default to Owner (No 4-digit PIN required)
-  const [currentUser, setCurrentUser] = useState<AppUser>(() => {
-    if (typeof window !== 'undefined') {
-      const savedUserId = localStorage.getItem('kind_pos_active_user_id');
-      const found = demoUsers.find((u) => u.id === savedUserId);
-      if (found) return found;
+  // The app always runs as one default user with the Owner role (full access to every page and action)
+  const currentUser: AppUser = useMemo(() => {
+    const existingOwner = demoUsers.find((u) => u.role === 'owner');
+    if (existingOwner) {
+      return existingOwner;
     }
-    return demoUsers[0];
-  });
-
-  const handleSwitchUser = (user: AppUser) => {
-    setCurrentUser(user);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('kind_pos_active_user_id', user.id);
-    }
-  };
+    return {
+      id: 'user_owner',
+      name: language === 'th' ? 'เจ้าของร้าน' : 'Owner',
+      role: 'owner',
+    };
+  }, [language]);
 
   // Dark Mode State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -119,6 +112,17 @@ export default function App() {
 
   // Start page after opening the app or logging in is ALWAYS the Tables floor plan
   const [currentView, setCurrentView] = useState<NavView>('tables');
+
+  useEffect(() => {
+    // Safely cleanup obsolete auth/session keys if present
+    try {
+      localStorage.removeItem('kind_pos_active_user_id');
+      localStorage.removeItem('kind_pos_auth_token');
+      localStorage.removeItem('kind_pos_session');
+    } catch {
+      // Ignore
+    }
+  }, []);
 
   // In-app Notifications State
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
@@ -691,7 +695,6 @@ export default function App() {
         notifications={notifications}
         isDarkMode={isDarkMode}
         onOpenDrawer={() => setIsNavOpen(true)}
-        onSwitchUser={handleSwitchUser}
         onToggleDarkMode={toggleDarkMode}
         onClearNotifications={() => setNotifications([])}
         onSimulateCallWaiter={() => {

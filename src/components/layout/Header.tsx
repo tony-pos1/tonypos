@@ -9,13 +9,10 @@ import {
   UserCheck,
   HandMetal,
   Receipt,
-  X,
   CheckCircle2,
   Trash2,
-  Check,
 } from 'lucide-react';
 import { AppSettings, AppUser, InAppNotification } from '../../types';
-import { demoUsers } from '../../db/seedData';
 
 interface HeaderProps {
   settings: AppSettings | null;
@@ -24,8 +21,6 @@ interface HeaderProps {
   notifications: InAppNotification[];
   isDarkMode: boolean;
   onOpenDrawer: () => void;
-  onLogout?: () => void;
-  onSwitchUser?: (user: AppUser) => void;
   onToggleDarkMode: () => void;
   onClearNotifications: () => void;
   onSimulateCallWaiter: () => void;
@@ -39,8 +34,6 @@ export const Header: React.FC<HeaderProps> = ({
   notifications,
   isDarkMode,
   onOpenDrawer,
-  onLogout,
-  onSwitchUser,
   onToggleDarkMode,
   onClearNotifications,
   onSimulateCallWaiter,
@@ -48,7 +41,6 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { language, setLanguage } = useI18n();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const displayName = language === 'th' ? settings?.shopName_th : settings?.shopName_en;
@@ -234,72 +226,23 @@ export const Header: React.FC<HeaderProps> = ({
           <span>{language === 'th' ? '🇺🇸 EN' : '🇹🇭 TH'}</span>
         </button>
 
-        {/* User Info & Switch User (No PIN required) */}
+        {/* Simple User Info Display (No dropdown, No logout button) */}
         {currentUser && (
-          <div className="relative">
-            <button
-              onClick={() => {
-                sound.playTap();
-                setShowUserMenu(!showUserMenu);
-              }}
-              className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
-              title={language === 'th' ? 'สลับผู้ใช้งาน / ตำแหน่ง (ไม่ต้องใส่ PIN)' : 'Switch User Role (No PIN)'}
+          <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-200 dark:border-slate-800">
+            <div className="hidden sm:flex flex-col text-right">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[120px]">
+                {currentUser.name}
+              </span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${roleBg}`}>
+                {roleLabel}
+              </span>
+            </div>
+            <div
+              className="p-1.5 rounded-xl bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 flex items-center justify-center"
+              title={`${currentUser.name} (${roleLabel})`}
             >
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[100px]">
-                  {currentUser.name}
-                </span>
-                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${roleBg}`}>
-                  {roleLabel}
-                </span>
-              </div>
-              <div className="p-1 rounded-lg bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400">
-                <UserCheck className="w-4 h-4" />
-              </div>
-            </button>
-
-            {/* Dropdown for Role Switching without PIN */}
-            {showUserMenu && (
-              <div className="absolute right-0 mt-1.5 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 p-2 animate-in fade-in zoom-in-95 duration-150">
-                <div className="px-2 py-1.5 border-b border-slate-100 dark:border-slate-800 mb-1">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    {language === 'th' ? 'เลือกตำแหน่งผู้ใช้งาน' : 'Select User Profile'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  {demoUsers.map((u) => {
-                    const isCurrent = u.id === currentUser.id;
-                    return (
-                      <button
-                        key={u.id}
-                        onClick={() => {
-                          sound.playTap();
-                          onSwitchUser?.(u);
-                          setShowUserMenu(false);
-                        }}
-                        className={`w-full px-2.5 py-2 rounded-xl text-left text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                          isCurrent
-                            ? 'bg-orange-500 text-white shadow-xs'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                        }`}
-                      >
-                        <div className="flex flex-col">
-                          <span>{u.name}</span>
-                          <span
-                            className={`text-[10px] uppercase font-semibold ${
-                              isCurrent ? 'text-white/80' : 'text-slate-400'
-                            }`}
-                          >
-                            {u.role}
-                          </span>
-                        </div>
-                        {isCurrent && <Check className="w-4 h-4" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              <UserCheck className="w-4 h-4" />
+            </div>
           </div>
         )}
       </div>
