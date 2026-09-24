@@ -183,6 +183,11 @@ export interface AppSettings {
   customerQrOrderingEnabled: boolean; // OFF by default
   printerPaperSize?: '80mm' | '58mm';
   printerCopies?: number;
+  printerType?: 'bluetooth' | 'serial' | 'system';
+  printerDeviceName?: string;
+  printerAutoPrintReceipt?: boolean;
+  printerOpenCashDrawer?: boolean;
+  printerThaiRasterMode?: boolean;
 }
 
 export interface Promotion {

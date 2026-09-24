@@ -16,6 +16,8 @@ import {
   ChefHat,
   ChevronRight,
   Monitor,
+  Printer,
+  Bluetooth,
 } from 'lucide-react';
 import { AppSettings } from '../../types';
 
@@ -36,6 +38,7 @@ interface NavigationDrawerProps {
   onSelectView: (view: NavView) => void;
   settings: AppSettings | null;
   onOpenCustomerDisplayModal?: () => void;
+  onOpenPrinterSettings?: () => void;
 }
 
 export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
@@ -45,6 +48,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onSelectView,
   settings,
   onOpenCustomerDisplayModal,
+  onOpenPrinterSettings,
 }) => {
   const { t, language, toggleLanguage } = useI18n();
 
@@ -213,14 +217,14 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
         {/* Dual-Screen Customer Display Shortcut */}
         {onOpenCustomerDisplayModal && (
-          <div className="px-3 pb-3">
+          <div className="px-3 pb-2">
             <button
               onClick={() => {
                 sound.playTap();
                 onClose();
                 onOpenCustomerDisplayModal();
               }}
-              className="w-full p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-left transition flex items-center justify-between cursor-pointer"
+              className="w-full p-3 rounded-2xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-left transition flex items-center justify-between cursor-pointer shadow-2xs"
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shrink-0">
@@ -236,6 +240,35 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-orange-600 shrink-0" />
+            </button>
+          </div>
+        )}
+
+        {/* Bluetooth Thermal Printer Shortcut */}
+        {onOpenPrinterSettings && (
+          <div className="px-3 pb-3">
+            <button
+              onClick={() => {
+                sound.playTap();
+                onClose();
+                onOpenPrinterSettings();
+              }}
+              className="w-full p-3 rounded-2xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-left transition flex items-center justify-between cursor-pointer shadow-2xs"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0">
+                  <Printer className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-black text-sky-950">
+                    {language === 'th' ? 'เครื่องพิมพ์บลูทูธ (Bluetooth Printer)' : 'Bluetooth Printer'}
+                  </div>
+                  <div className="text-[11px] text-sky-800/80">
+                    {language === 'th' ? 'เชื่อมต่อเครื่องพิมพ์บิล & พิมพ์ทดสอบ' : 'Connect printer & test print'}
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-sky-600 shrink-0" />
             </button>
           </div>
         )}

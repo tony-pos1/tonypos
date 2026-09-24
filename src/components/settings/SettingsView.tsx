@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppSettings } from '../../types';
 import { useI18n } from '../../i18n';
 import {
@@ -7,6 +7,7 @@ import {
   seedDatabaseIfEmpty,
 } from '../../db/db';
 import { sound } from '../../utils/sound';
+import { bluetoothPrinter, PrinterStatus } from '../../utils/bluetoothPrinter';
 import {
   Store,
   Receipt,
@@ -24,26 +25,125 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Eye,
+  Bluetooth,
+  Usb,
+  Unlink,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
 
 interface SettingsViewProps {
   settings: AppSettings;
   onUpdateSettings: (updated: Partial<AppSettings>) => Promise<void>;
   onReloadAllData: () => Promise<void>;
+  initialTab?: 'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer';
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
   onUpdateSettings,
   onReloadAllData,
+  initialTab = 'shop',
 }) => {
   const { t, language } = useI18n();
 
-  const [activeTab, setActiveTab] = useState<'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer'>('shop');
+  const [activeTab, setActiveTab] = useState<'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer'>(initialTab);
   const [formData, setFormData] = useState<AppSettings>(settings);
   const [newModifier, setNewModifier] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+
+  // Bluetooth & Thermal Printer states
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus>(bluetoothPrinter.getStatus());
+  const [isPrinterConnecting, setIsPrinterConnecting] = useState(false);
+  const [isTestPrinting, setIsTestPrinting] = useState(false);
+  const [printerSuccessMsg, setPrinterSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    return bluetoothPrinter.subscribe((status) => {
+      setPrinterStatus(status);
+      if (status.isConnected && status.deviceName) {
+        setFormData((prev) => ({
+          ...prev,
+          printerDeviceName: status.deviceName || undefined,
+          printerType: status.connectionType === 'none' ? undefined : status.connectionType,
+        }));
+      }
+    });
+  }, []);
+
+  const handleConnectBluetooth = async () => {
+    sound.playTap();
+    setIsPrinterConnecting(true);
+    setPrinterSuccessMsg(null);
+    try {
+      await bluetoothPrinter.connectBluetooth();
+      setPrinterSuccessMsg('เชื่อมต่อเครื่องพิมพ์บลูทูธสำเร็จแล้ว!');
+      setTimeout(() => setPrinterSuccessMsg(null), 3500);
+    } catch (err: any) {
+      // Handled in printerStatus.error
+    } finally {
+      setIsPrinterConnecting(false);
+    }
+  };
+
+  const handleConnectSerial = async () => {
+    sound.playTap();
+    setIsPrinterConnecting(true);
+    setPrinterSuccessMsg(null);
+    try {
+      await bluetoothPrinter.connectSerial();
+      setPrinterSuccessMsg('เชื่อมต่อพอร์ตเครื่องพิมพ์ POS สำเร็จแล้ว!');
+      setTimeout(() => setPrinterSuccessMsg(null), 3500);
+    } catch (err: any) {
+      // Handled in printerStatus.error
+    } finally {
+      setIsPrinterConnecting(false);
+    }
+  };
+
+  const handleDisconnectPrinter = async () => {
+    sound.playTap();
+    await bluetoothPrinter.disconnect();
+    setPrinterSuccessMsg('ตัดการเชื่อมต่อเครื่องพิมพ์แล้ว');
+    setTimeout(() => setPrinterSuccessMsg(null), 2500);
+  };
+
+  const handleTestPrint = async () => {
+    sound.playTap();
+    setIsTestPrinting(true);
+    try {
+      if (!bluetoothPrinter.getStatus().isConnected) {
+        // If not connected, prompt to connect Bluetooth first
+        const ok = await bluetoothPrinter.connectBluetooth();
+        if (!ok) {
+          setIsTestPrinting(false);
+          return;
+        }
+      }
+      await bluetoothPrinter.printTestReceipt(formData);
+      setPrinterSuccessMsg('พิมพ์ใบเสร็จทดสอบเรียบร้อยแล้ว กรุณาตรวจสอบกระดาษที่เครื่องพิมพ์');
+      setTimeout(() => setPrinterSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.warn('Printer test print error:', err);
+      if (window.confirm('ไม่สามารถพิมพ์ตรงไปยังบลูทูธได้ (' + (err.message || 'ยังไม่ได้เชื่อมต่อ') + ')\nต้องการเปิดหน้าต่างพิมพ์ของระบบ (Browser Print) เพื่อทดสอบแทนหรือไม่?')) {
+        window.print();
+      }
+    } finally {
+      setIsTestPrinting(false);
+    }
+  };
+
+  const handleSystemTestPrint = () => {
+    sound.playTap();
+    window.print();
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +169,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...formData,
       quickModifiers: formData.quickModifiers.filter((_, i) => i !== index),
     });
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('กรุณาเลือกไฟล์รูปภาพเท่านั้น (PNG, JPG, SVG)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormData((prev) => ({
+        ...prev,
+        logoUrl: reader.result as string,
+      }));
+      sound.playNotificationChime();
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCustomQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,6 +399,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {t('modeFineDiningDesc')}
                     </div>
                   </button>
+                </div>
+              </div>
+
+              {/* Shop Logo Uploader (Top of Receipt) */}
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    รูปภาพ Logo ของร้าน (Shop Logo for Receipt Header)
+                  </label>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    รูปนี้จะแสดงที่ด้านบนสุดของบิลใบเสร็จทุกใบที่พิมพ์ออกมา (โหลดรูปใส่เองได้)
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-orange-300 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                    {formData.logoUrl ? (
+                      <img
+                        src={formData.logoUrl}
+                        alt="Shop Logo"
+                        className="w-full h-full object-contain p-1"
+                      />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-slate-300" />
+                    )}
+                  </div>
+
+                  <div className="space-y-2 text-center sm:text-left">
+                    <label className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs w-fit">
+                      <Upload className="w-4 h-4" />
+                      <span>อัปโหลด / เปลี่ยนรูป Logo ร้าน</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {formData.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, logoUrl: undefined })}
+                        className="block text-xs text-rose-600 hover:underline cursor-pointer font-semibold"
+                      >
+                        ลบรูป Logo นี้
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -776,29 +943,158 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* TAB 5: PRINTER */}
           {activeTab === 'printer' && (
             <div className="space-y-4">
-              <h3 className="text-base font-bold text-orange-600 border-b border-slate-200 pb-2 flex items-center gap-2">
-                <Printer className="w-5 h-5" />
-                <span>{t('printerTab')}</span>
+              <h3 className="text-base font-bold text-orange-600 border-b border-slate-200 pb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Printer className="w-5 h-5" />
+                  <span>{t('printerTab')} (Bluetooth / ESC/POS)</span>
+                </div>
+                {printerStatus.isConnected ? (
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    เชื่อมต่อแล้ว
+                  </span>
+                ) : (
+                  <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                    ยังไม่ได้เชื่อมต่อ
+                  </span>
+                )}
               </h3>
 
-              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-bold text-slate-900">
-                      {t('printerBluetooth')} (ESC/POS Thermal)
+              {printerSuccessMsg && (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{printerSuccessMsg}</span>
+                </div>
+              )}
+
+              {printerStatus.error && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-start gap-2 animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{printerStatus.error}</span>
+                </div>
+              )}
+
+              {/* CARD 1: BLUETOOTH & PORT CONNECTION */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+                {/* Header status row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div className="space-y-1">
+                    <div className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <Bluetooth className="w-5 h-5 text-sky-600" />
+                      <span>เครื่องพิมพ์บลูทูธของเครื่อง POS (Bluetooth Thermal Printer)</span>
                     </div>
                     <div className="text-xs text-slate-500">
-                      เครื่องพิมพ์ใบเสร็จความร้อน (Bluetooth / USB)
+                      รองรับเครื่องพิมพ์ใบเสร็จความร้อนบลูทูธ (ESC/POS 58mm/80mm) ทุกรุ่น
                     </div>
                   </div>
-                  <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
-                    Web Bluetooth Ready
-                  </span>
+
+                  {/* Live Status Pill */}
+                  <div className="flex items-center gap-2">
+                    {printerStatus.isConnected ? (
+                      <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold shadow-xs">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>เชื่อมต่อแล้ว: {printerStatus.deviceName || 'Thermal Printer'}</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-xs font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-slate-400" />
+                        <span>สถานะ: ยังไม่ได้เชื่อมต่อ</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-2">
+                {/* MAIN ACTION BUTTONS: ALWAYS PROMINENTLY VISIBLE */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Button 1: Scan Bluetooth */}
+                  <button
+                    type="button"
+                    onClick={handleConnectBluetooth}
+                    disabled={isPrinterConnecting}
+                    className="p-4 rounded-2xl bg-orange-600 hover:bg-orange-500 active:bg-orange-700 disabled:bg-orange-300 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-3 cursor-pointer min-h-[56px] text-center"
+                  >
+                    <Bluetooth className={`w-5 h-5 shrink-0 ${isPrinterConnecting ? 'animate-spin' : ''}`} />
+                    <div className="text-left">
+                      <div className="font-black leading-tight">
+                        {isPrinterConnecting ? 'กำลังค้นหาบลูทูธ...' : 'ค้นหาและเลือกเครื่องพิมพ์บลูทูธ'}
+                      </div>
+                      <div className="text-[11px] text-orange-100 font-normal leading-tight">
+                        กดเพื่อเปิดหน้าต่างเลือกเครื่องพิมพ์บลูทูธของ POS
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Button 2: Test Print Receipt (ALWAYS VISIBLE 100%) */}
+                  <button
+                    type="button"
+                    onClick={handleTestPrint}
+                    disabled={isTestPrinting}
+                    className="p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-3 cursor-pointer min-h-[56px] text-center"
+                  >
+                    <Printer className={`w-5 h-5 shrink-0 ${isTestPrinting ? 'animate-pulse' : ''}`} />
+                    <div className="text-left">
+                      <div className="font-black leading-tight">
+                        {isTestPrinting ? 'กำลังส่งข้อมูลพิมพ์...' : 'พิมพ์ใบเสร็จทดสอบ (Test Print)'}
+                      </div>
+                      <div className="text-[11px] text-emerald-100 font-normal leading-tight">
+                        ทดสอบสั่งพิมพ์และตัดกระดาษจริง
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Secondary Actions & Info */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Serial/USB Port Button */}
+                    {bluetoothPrinter.isSerialSupported() && (
+                      <button
+                        type="button"
+                        onClick={handleConnectSerial}
+                        disabled={isPrinterConnecting}
+                        className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition border border-slate-200 flex items-center gap-1.5 cursor-pointer"
+                        title="สำหรับเครื่อง POS all-in-one ที่มีเครื่องพิมพ์ฝังในตัวต่อผ่าน Serial/USB"
+                      >
+                        <Usb className="w-3.5 h-3.5 text-slate-600" />
+                        <span>เลือกพอร์ต Serial/USB</span>
+                      </button>
+                    )}
+
+                    {/* Browser Print Fallback */}
+                    <button
+                      type="button"
+                      onClick={handleSystemTestPrint}
+                      className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition border border-slate-200 flex items-center gap-1.5 cursor-pointer"
+                      title="ทดสอบพิมพ์ผ่านหน้าต่างพิมพ์มาตรฐานของระบบ/เบราว์เซอร์"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-slate-500" />
+                      <span>ทดสอบพิมพ์ผ่านระบบ (Browser Print)</span>
+                    </button>
+                  </div>
+
+                  {/* Disconnect Button (if connected) */}
+                  {printerStatus.isConnected && (
+                    <button
+                      type="button"
+                      onClick={handleDisconnectPrinter}
+                      className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition flex items-center gap-1.5 cursor-pointer ml-auto"
+                    >
+                      <Unlink className="w-3.5 h-3.5" />
+                      <span>ตัดการเชื่อมต่อ</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* CARD 2: PRINTER CONFIGURATION */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  การตั้งค่าเครื่องพิมพ์ (Printer Preferences)
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                       {t('printerPaperSize')}
                     </label>
                     <select
@@ -809,15 +1105,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           printerPaperSize: e.target.value as '80mm' | '58mm',
                         })
                       }
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-orange-500"
                     >
-                      <option value="80mm">80 mm (มาตรฐานร้านอาหาร)</option>
-                      <option value="58mm">58 mm (เครื่องพกพา)</option>
+                      <option value="80mm">80 mm (ความกว้าง 576 จุด - มาตรฐานเครื่อง POS หน้าร้าน)</option>
+                      <option value="58mm">58 mm (ความกว้าง 384 จุด - เครื่องพกพาขนาดเล็ก)</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                       {t('printerCopies')}
                     </label>
                     <input
@@ -836,11 +1132,127 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-orange-50 border border-orange-200 text-xs text-slate-700 space-y-1">
-                  <div className="font-bold text-orange-700">หมายเหตุการพิมพ์ภาษาไทย (Thai Raster Engine):</div>
+                <div className="pt-2 border-t border-slate-100 space-y-3">
+                  {/* Auto-print toggle */}
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition cursor-pointer">
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">
+                        พิมพ์ใบเสร็จอัตโนมัติเมื่อชำระเงินสำเร็จ (Auto-print on checkout)
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        เมื่อพนักงานกดยืนยันชำระเงิน ระบบจะสั่งพิมพ์ใบเสร็จออกเครื่องพิมพ์ทันที
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.printerAutoPrintReceipt ?? true}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          printerAutoPrintReceipt: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 text-orange-600 rounded-sm focus:ring-orange-500 cursor-pointer"
+                    />
+                  </label>
+
+                  {/* Cash drawer kick toggle */}
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition cursor-pointer">
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">
+                        เตะเปิดลิ้นชักเก็บเงินอัตโนมัติ (Kick Cash Drawer)
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        ส่งสัญญาณเปิดลิ้นชักที่ต่อพ่วงกับเครื่องพิมพ์ (พอร์ต RJ11) ทุกครั้งที่พิมพ์ใบเสร็จ
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.printerOpenCashDrawer ?? false}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          printerOpenCashDrawer: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 text-orange-600 rounded-sm focus:ring-orange-500 cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-orange-50 border border-orange-200 text-xs text-slate-700 space-y-1.5">
+                  <div className="font-bold text-orange-800 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-orange-600" />
+                    <span>ระบบพิมพ์ภาษาไทยคมชัด 100% (High-Definition Thai Raster Engine):</span>
+                  </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    ระบบรองรับการพิมพ์ทั้งแบบ Web Print มาตรฐาน (Ctrl+P / AirPrint) และแปลงข้อความภาษาไทยเป็นบิตแมปความละเอียดสูง (Canvas Raster) สำหรับส่งตรงไปยังเครื่องพิมพ์ ESC/POS สระไม่ลอย วรรณยุกต์คมชัดทุกรุ่น
+                    ระบบจะแปลงข้อความภาษาไทยและใบเสร็จเป็นภาพบิตแมปความละเอียดสูงก่อนส่งให้เครื่องพิมพ์ ทำให้**สระ วรรณยุกต์ และตัวอักษรภาษาไทยไม่ลอย ไม่เพี้ยน และไม่เป็นภาษาต่างดาว** พิมพ์ได้คมชัดกับเครื่องพิมพ์ความร้อนทุกรุ่น
                   </p>
+                </div>
+              </div>
+
+              {/* CARD 3: RECEIPT FORMAT SPECIFICATION & PREVIEW */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-orange-600" />
+                    <span>รูปแบบการจัดวางบิลใบเสร็จ (Receipt Layout)</span>
+                  </h4>
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    ตามมาตรฐานที่กำหนด
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200 font-mono">
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-orange-600">1. ด้านบนสุด:</span>
+                    <div>
+                      <div className="font-bold text-slate-900">รูปภาพ Logo ร้าน (อัปโหลดใส่เอง)</div>
+                      <div className="text-[11px] text-slate-500">
+                        {formData.logoUrl ? '✅ มีรูป Logo แล้ว พร้อมพิมพ์' : '⚠️ ยังไม่ได้อัปโหลด (ไปที่แท็บ "ข้อมูลร้าน" เพื่อเลือกรูป)'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-orange-600">2. ใต้รูป Logo:</span>
+                    <div>
+                      <div className="font-bold text-slate-900">ชื่อร้าน & ข้อมูลติดต่อ</div>
+                      <div className="text-[11px] text-slate-500 font-sans">
+                        "{formData.shopName_th || 'Thai Restaurant'}" | โทร: {formData.shopPhone || '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-orange-600">3. ต่อลงมา:</span>
+                    <div>
+                      <div className="font-bold text-slate-900">รายการอาหารและราคาทั้งหมด</div>
+                      <div className="text-[11px] text-slate-500 font-sans">
+                        เลขที่บิล, โต๊ะ/สั่งกลับบ้าน, รายการอาหาร, ท็อปปิ้ง, ส่วนลด, VAT, ยอดสุทธิ
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-orange-600">4. ตอนท้าย:</span>
+                    <div>
+                      <div className="font-bold text-slate-900">รูป QR เพื่อให้ลูกค้าสแกนจ่ายเงินได้ (อัปโหลดใส่เอง)</div>
+                      <div className="text-[11px] text-slate-500">
+                        {formData.customPromptPayQrImage ? '✅ มีรูป QR พร้อมเพย์ของร้านแล้ว พร้อมพิมพ์' : '⚠️ ยังไม่ได้อัปโหลด (ไปที่แท็บ "พร้อมเพย์" เพื่อเลือกรูป)'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-orange-600">5. ท้ายสุด:</span>
+                    <div>
+                      <div className="font-bold text-slate-900">คำขอบคุณ (ใส่ข้อความเองได้)</div>
+                      <div className="text-[11px] text-slate-500 font-sans">
+                        "{formData.receiptFooter_th || 'ขอบคุณที่มาอุดหนุนค่ะ'}"
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

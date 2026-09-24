@@ -15,14 +15,8 @@
     <meta name="apple-mobile-web-app-title" content="ThaiPOS" />
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <script>
-      // Auto-redirect to compiled /docs/ if opened on GitHub Pages without GitHub Actions
-      if (window.location.hostname.includes('github.io') && !window.location.pathname.includes('/docs')) {
-        var cleanPath = window.location.pathname.replace(/\/index\.html$/, '');
-        if (!cleanPath.endsWith('/')) cleanPath += '/';
-        window.location.replace(cleanPath + 'docs/' + window.location.search + window.location.hash);
-      }
-    </script>
+    <link rel="manifest" href="./assets/index.webmanifest" />
+    <script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script>
     <script type="module" crossorigin src="./assets/index.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index.css">
   <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
@@ -30,4 +24,3 @@
     <div id="root"></div>
   </body>
 </html>
-

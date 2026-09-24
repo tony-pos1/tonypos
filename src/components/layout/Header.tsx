@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { sound } from '../../utils/sound';
 import { customerDisplaySync } from '../../utils/customerDisplaySync';
+import { bluetoothPrinter, PrinterStatus } from '../../utils/bluetoothPrinter';
 import {
   Globe,
   Wifi,
@@ -12,6 +13,8 @@ import {
   Inbox,
   Menu,
   Monitor,
+  Printer,
+  Bluetooth,
 } from 'lucide-react';
 import { AppSettings } from '../../types';
 
@@ -22,6 +25,7 @@ interface HeaderProps {
   onOpenCashDrawer?: () => void;
   onOpenCustomerDisplayModal?: () => void;
   isCustomerDisplayConnected?: boolean;
+  onOpenPrinterSettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,9 +35,17 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCashDrawer,
   onOpenCustomerDisplayModal,
   isCustomerDisplayConnected,
+  onOpenPrinterSettings,
 }) => {
   const { t, language, toggleLanguage } = useI18n();
   const isOnline = useOnlineStatus();
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus>(bluetoothPrinter.getStatus());
+
+  useEffect(() => {
+    return bluetoothPrinter.subscribe((status) => {
+      setPrinterStatus(status);
+    });
+  }, []);
 
   const handleTestChime = () => {
     sound.playNotificationChime();
@@ -123,6 +135,42 @@ export const Header: React.FC<HeaderProps> = ({
           <span
             className={`w-2 h-2 rounded-full ${
               isCustomerDisplayConnected ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'
+            }`}
+          />
+        </button>
+
+        {/* Bluetooth / POS Thermal Printer Indicator */}
+        <button
+          onClick={() => {
+            sound.playTap();
+            if (onOpenPrinterSettings) {
+              onOpenPrinterSettings();
+            } else {
+              onOpenDrawer();
+            }
+          }}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer ${
+            printerStatus.isConnected
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+              : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+          }`}
+          title={
+            printerStatus.isConnected
+              ? `เครื่องพิมพ์เชื่อมต่ออยู่: ${printerStatus.deviceName} (คลิกเพื่อไปที่ตั้งค่า)`
+              : 'ยังไม่ได้เชื่อมต่อเครื่องพิมพ์บลูทูธ (คลิกเพื่อไปตั้งค่า)'
+          }
+        >
+          {printerStatus.isConnected ? (
+            <Bluetooth className="w-3.5 h-3.5 text-emerald-600" />
+          ) : (
+            <Printer className="w-3.5 h-3.5 text-slate-500" />
+          )}
+          <span className="hidden md:inline">
+            {printerStatus.isConnected ? 'เครื่องพิมพ์พร้อม' : 'เครื่องพิมพ์'}
+          </span>
+          <span
+            className={`w-2 h-2 rounded-full ${
+              printerStatus.isConnected ? 'bg-emerald-500' : 'bg-slate-400'
             }`}
           />
         </button>

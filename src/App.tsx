@@ -135,6 +135,7 @@ export default function App() {
     isOpen: boolean;
     item: MenuItem | null;
   }>({ isOpen: false, item: null });
+  const [settingsTab, setSettingsTab] = useState<'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer'>('shop');
 
   // Initial Load
   const reloadAllData = useCallback(async () => {
@@ -621,6 +622,10 @@ export default function App() {
         onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
         onOpenCustomerDisplayModal={() => setIsCustomerDisplayControlOpen(true)}
         isCustomerDisplayConnected={isCustomerDisplayConnected}
+        onOpenPrinterSettings={() => {
+          setCurrentView('settings');
+          setSettingsTab('printer');
+        }}
       />
 
       {/* Main Workspace Area (Full-width responsive view) */}
@@ -792,6 +797,7 @@ export default function App() {
               settings={settings}
               onUpdateSettings={handleUpdateSettings}
               onReloadAllData={reloadAllData}
+              initialTab={settingsTab}
             />
           )}
         </main>
@@ -810,6 +816,10 @@ export default function App() {
         }}
         settings={settings}
         onOpenCustomerDisplayModal={() => setIsCustomerDisplayControlOpen(true)}
+        onOpenPrinterSettings={() => {
+          setCurrentView('settings');
+          setSettingsTab('printer');
+        }}
       />
 
       {/* Cash Drawer Kick & Manual Audit Modal */}

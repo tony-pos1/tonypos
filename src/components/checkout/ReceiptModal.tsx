@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppSettings, Order } from '../../types';
 import { useI18n } from '../../i18n';
 import { sound } from '../../utils/sound';
-import { Printer, Check, PlusCircle, X } from 'lucide-react';
+import { bluetoothPrinter, PrinterStatus } from '../../utils/bluetoothPrinter';
+import { Printer, Check, PlusCircle, X, Bluetooth, CheckCircle2 } from 'lucide-react';
 
 interface ReceiptModalProps {
   order: Order;
@@ -18,8 +19,39 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onNewOrder,
 }) => {
   const { t, language } = useI18n();
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus>(bluetoothPrinter.getStatus());
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printSuccess, setPrintSuccess] = useState(false);
 
-  const handlePrint = () => {
+  useEffect(() => {
+    return bluetoothPrinter.subscribe((status) => {
+      setPrinterStatus(status);
+    });
+  }, []);
+
+  // Auto-print receipt if enabled and printer is connected
+  useEffect(() => {
+    if (settings.printerAutoPrintReceipt && printerStatus.isConnected) {
+      handleBluetoothPrint();
+    }
+  }, []);
+
+  const handleBluetoothPrint = async () => {
+    sound.playTap();
+    try {
+      setIsPrinting(true);
+      await bluetoothPrinter.printReceipt(order, settings);
+      setPrintSuccess(true);
+      setTimeout(() => setPrintSuccess(false), 2500);
+    } catch (err: any) {
+      console.warn('Bluetooth print failed, falling back to system print:', err);
+      window.print();
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleSystemPrint = () => {
     sound.playTap();
     window.print();
   };
@@ -60,13 +92,34 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </h3>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 cursor-pointer transition min-h-[38px] shadow-xs"
-            >
-              <Printer className="w-4 h-4 text-orange-600" />
-              <span>{t('receiptPrint')}</span>
-            </button>
+            {printerStatus.isConnected ? (
+              <>
+                <button
+                  onClick={handleBluetoothPrint}
+                  disabled={isPrinting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-300 text-white text-xs font-bold shadow-xs cursor-pointer transition min-h-[38px]"
+                  title={`พิมพ์ตรงไปยัง ${printerStatus.deviceName}`}
+                >
+                  <Bluetooth className={`w-4 h-4 ${isPrinting ? 'animate-spin' : ''}`} />
+                  <span>{isPrinting ? 'กำลังพิมพ์...' : printSuccess ? 'พิมพ์สำเร็จ!' : 'พิมพ์บลูทูธ'}</span>
+                </button>
+                <button
+                  onClick={handleSystemPrint}
+                  className="px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold cursor-pointer transition min-h-[38px]"
+                  title="พิมพ์ผ่านหน้าต่างระบบ (Windows/Browser)"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleSystemPrint}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 cursor-pointer transition min-h-[38px] shadow-xs"
+              >
+                <Printer className="w-4 h-4 text-orange-600" />
+                <span>{t('receiptPrint')}</span>
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200 cursor-pointer"
@@ -83,8 +136,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             id="printable-receipt"
             className="w-full bg-white text-slate-900 p-6 rounded-2xl shadow-xs border border-slate-200 font-mono text-xs space-y-4 print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:text-black"
           >
-            {/* Header: Shop Info */}
+            {/* Header: Shop Logo & Info */}
             <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
+              {settings.logoUrl && (
+                <div className="flex justify-center mb-2">
+                  <img
+                    src={settings.logoUrl}
+                    alt="Shop Logo"
+                    className="max-h-16 max-w-[180px] object-contain"
+                  />
+                </div>
+              )}
               <h2 className="text-base font-black text-slate-900 leading-tight">
                 {shopName}
               </h2>
@@ -222,6 +284,27 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <div className="flex justify-between text-[10px] text-slate-500">
                     <span>Ref:</span>
                     <span>{mainPayment.reference}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PromptPay QR Code for Payment */}
+            {settings.customPromptPayQrImage && (
+              <div className="text-center py-2 border-t border-dashed border-slate-300 space-y-1">
+                <div className="text-[11px] font-bold text-slate-800">
+                  {language === 'th' ? 'สแกน QR เพื่อชำระเงิน' : 'Scan QR to Pay'}
+                </div>
+                <div className="flex justify-center py-1">
+                  <img
+                    src={settings.customPromptPayQrImage}
+                    alt="PromptPay QR"
+                    className="w-36 h-36 object-contain border border-slate-200 rounded-xl p-1 bg-white shadow-2xs"
+                  />
+                </div>
+                {settings.promptPayId && (
+                  <div className="text-[10px] text-slate-500">
+                    PromptPay: {settings.promptPayId}
                   </div>
                 )}
               </div>

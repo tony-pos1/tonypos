@@ -3,6 +3,7 @@ import { AppSettings, Order, PaymentMethod, PaymentRecord } from '../../types';
 import { useI18n } from '../../i18n';
 import { sound } from '../../utils/sound';
 import { customerDisplaySync } from '../../utils/customerDisplaySync';
+import { bluetoothPrinter, PrinterStatus } from '../../utils/bluetoothPrinter';
 import {
   X,
   Banknote,
@@ -16,6 +17,8 @@ import {
   Upload,
   Image as ImageIcon,
   Monitor,
+  Printer,
+  Bluetooth,
 } from 'lucide-react';
 
 interface PaymentModalProps {
@@ -41,6 +44,36 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [copiedPromptPay, setCopiedPromptPay] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingQr, setIsUploadingQr] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus>(bluetoothPrinter.getStatus());
+  const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
+  const [printSuccessFeedback, setPrintSuccessFeedback] = useState(false);
+
+  useEffect(() => {
+    return bluetoothPrinter.subscribe((status) => {
+      setPrinterStatus(status);
+    });
+  }, []);
+
+  const handlePrintReceipt = async () => {
+    sound.playTap();
+    setIsPrintingReceipt(true);
+    try {
+      if (printerStatus.isConnected) {
+        await bluetoothPrinter.printReceipt(order, settings);
+        setPrintSuccessFeedback(true);
+        setTimeout(() => setPrintSuccessFeedback(false), 3000);
+      } else {
+        window.print();
+        setPrintSuccessFeedback(true);
+        setTimeout(() => setPrintSuccessFeedback(false), 3000);
+      }
+    } catch (err: any) {
+      console.warn('Bluetooth print failed, attempting browser print:', err);
+      window.print();
+    } finally {
+      setIsPrintingReceipt(false);
+    }
+  };
 
   const changeDue = Math.max(0, cashTendered - order.netTotal);
   const isCashInsufficient = method === 'cash' && cashTendered < order.netTotal;
@@ -483,29 +516,175 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           )}
         </div>
 
-        {/* Footer Submit Button */}
-        <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+        {/* Footer Submit & Print Receipt Buttons */}
+        <div className="px-5 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition cursor-pointer min-h-[42px]"
           >
             {t('cancel')}
           </button>
 
-          <button
-            type="button"
-            disabled={isSubmitting || isCashInsufficient}
-            onClick={handleSubmitPayment}
-            className="px-6 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white text-xs font-black transition flex items-center gap-2 shadow-md cursor-pointer"
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>
-              {isSubmitting
-                ? (language === 'th' ? 'กำลังบันทึก...' : 'Processing...')
-                : `${language === 'th' ? 'ยืนยันรับชำระ' : 'Confirm Payment'} (฿${order.netTotal.toLocaleString()})`}
-            </span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Print Receipt Button */}
+            <button
+              type="button"
+              disabled={isPrintingReceipt}
+              onClick={handlePrintReceipt}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs min-h-[42px] border ${
+                printSuccessFeedback
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                  : 'bg-white hover:bg-orange-50 border-slate-300 hover:border-orange-300 text-slate-800 hover:text-orange-700'
+              }`}
+              title="พิมพ์ใบเสร็จให้ลูกค้า (มีรูป Logo, รายการอาหาร, QR Code สำหรับสแกนจ่ายเงิน และคำขอบคุณ)"
+            >
+              <Printer className="w-4 h-4 text-orange-600" />
+              <span>
+                {isPrintingReceipt
+                  ? (language === 'th' ? 'กำลังพิมพ์...' : 'Printing...')
+                  : printSuccessFeedback
+                  ? (language === 'th' ? 'พิมพ์สำเร็จ!' : 'Printed!')
+                  : (language === 'th' ? 'พิมพ์ใบเสร็จ' : 'Print Receipt')}
+              </span>
+            </button>
+
+            {/* Confirm Payment Button */}
+            <button
+              type="button"
+              disabled={isSubmitting || isCashInsufficient}
+              onClick={handleSubmitPayment}
+              className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white text-xs font-black transition flex items-center gap-2 shadow-md cursor-pointer min-h-[42px]"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>
+                {isSubmitting
+                  ? (language === 'th' ? 'กำลังบันทึก...' : 'Processing...')
+                  : `${language === 'th' ? 'ยืนยันรับชำระ' : 'Confirm Payment'} (฿${order.netTotal.toLocaleString()})`}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Hidden Thermal Receipt Container for window.print() */}
+      <div id="printable-receipt" className="hidden print:block text-black font-mono text-xs p-2 bg-white">
+        {/* 1. TOP: SHOP LOGO */}
+        {settings.logoUrl && (
+          <div className="flex justify-center mb-2">
+            <img
+              src={settings.logoUrl}
+              alt="Shop Logo"
+              className="max-h-20 max-w-[180px] object-contain"
+            />
+          </div>
+        )}
+
+        {/* 2. UNDER LOGO: SHOP NAME */}
+        <div className="text-center pb-2 border-b border-dashed border-black">
+          <div className="text-base font-bold">
+            {language === 'th' ? settings.shopName_th : settings.shopName_en}
+          </div>
+          {settings.shopAddress_th && (
+            <div className="text-[11px] text-gray-700">{settings.shopAddress_th}</div>
+          )}
+          {settings.shopPhone && (
+            <div className="text-[11px] text-gray-700">โทร: {settings.shopPhone}</div>
+          )}
+          {settings.shopTaxId && (
+            <div className="text-[11px] text-gray-700">เลขประจำตัวผู้เสียภาษี: {settings.shopTaxId}</div>
+          )}
+        </div>
+
+        {/* Meta Info */}
+        <div className="py-2 border-b border-dashed border-black space-y-0.5 text-[11px]">
+          <div className="flex justify-between">
+            <span>ใบเสร็จ: {order.orderNumber}</span>
+            {order.queueNumber && <span className="font-bold">คิว #{order.queueNumber}</span>}
+          </div>
+          <div className="flex justify-between">
+            <span>{new Date(order.createdAt).toLocaleString('th-TH')}</span>
+            <span>{order.tableName ? `โต๊ะ: ${order.tableName}` : (order.orderType === 'takeaway' ? 'สั่งกลับบ้าน' : '')}</span>
+          </div>
+        </div>
+
+        {/* 3. ITEMIZED FOODS & PRICES */}
+        <div className="py-2 border-b border-dashed border-black space-y-1">
+          <div className="flex justify-between font-bold text-[11px] pb-1">
+            <span>รายการ</span>
+            <span>จำนวนเงิน</span>
+          </div>
+          {order.lines.filter((l) => l.status !== 'voided').map((line) => (
+            <div key={line.id} className="space-y-0.5">
+              <div className="flex justify-between">
+                <span>{line.quantity}x {line.name_th || line.name_en}</span>
+                <span>฿{(line.unitPrice * line.quantity).toFixed(2)}</span>
+              </div>
+              {line.selectedOptions?.map((opt) => (
+                <div key={opt.optionId} className="pl-3 text-[10px] text-gray-600 flex justify-between">
+                  <span>+ {opt.optionName_th}</span>
+                  {opt.priceDelta > 0 && <span>+฿{opt.priceDelta}</span>}
+                </div>
+              ))}
+              {line.modifiers?.map((mod, i) => (
+                <div key={i} className="pl-3 text-[10px] text-gray-600">* {mod}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Financials */}
+        <div className="py-2 border-b border-dashed border-black space-y-0.5 text-[11px]">
+          <div className="flex justify-between">
+            <span>รวมรายการ:</span>
+            <span>฿{order.subtotal.toFixed(2)}</span>
+          </div>
+          {order.discountAmount > 0 && (
+            <div className="flex justify-between">
+              <span>ส่วนลด:</span>
+              <span>-฿{order.discountAmount.toFixed(2)}</span>
+            </div>
+          )}
+          {order.serviceChargeAmount > 0 && (
+            <div className="flex justify-between">
+              <span>ค่าบริการ ({order.serviceChargeRate}%):</span>
+              <span>+฿{order.serviceChargeAmount.toFixed(2)}</span>
+            </div>
+          )}
+          {order.vatAmount > 0 && (
+            <div className="flex justify-between">
+              <span>ภาษี ({order.vatRate}%):</span>
+              <span>+฿{order.vatAmount.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-sm font-black pt-1 border-t border-black">
+            <span>ยอดสุทธิ:</span>
+            <span>฿{order.netTotal.toFixed(2)}</span>
+          </div>
+        </div>
+
+        {/* 4. BOTTOM QR: SHOP'S PROMPTPAY QR */}
+        {settings.customPromptPayQrImage && (
+          <div className="py-3 text-center border-b border-dashed border-black space-y-1">
+            <div className="font-bold text-[11px]">สแกน QR เพื่อชำระเงิน (PromptPay)</div>
+            <div className="flex justify-center py-1">
+              <img
+                src={settings.customPromptPayQrImage}
+                alt="PromptPay QR"
+                className="w-36 h-36 object-contain"
+              />
+            </div>
+            <div className="font-bold text-xs">ยอดชำระ: ฿{order.netTotal.toFixed(2)}</div>
+            {settings.promptPayId && (
+              <div className="text-[10px] text-gray-600">พร้อมเพย์: {settings.promptPayId}</div>
+            )}
+          </div>
+        )}
+
+        {/* 5. VERY BOTTOM: CUSTOM THANK YOU NOTE */}
+        <div className="text-center pt-3 text-[11px] text-gray-700 space-y-1">
+          <div>{settings.receiptFooter_th || settings.receiptFooter_en || 'ขอบคุณที่มาอุดหนุนค่ะ'}</div>
+          <div className="text-[9px] text-gray-500">POWERED BY THAI RESTAURANT POS</div>
         </div>
       </div>
     </div>
