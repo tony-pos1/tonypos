@@ -1,6 +1,7 @@
 import React from 'react';
 import { useI18n } from '../../i18n';
 import { exportDatabaseBackup } from '../../db/db';
+import { saveBackupFile } from '../../utils/fileBackup';
 import { AlertTriangle, Download, X } from 'lucide-react';
 import { sound } from '../../utils/sound';
 
@@ -21,18 +22,15 @@ export const BackupWarningBanner: React.FC<BackupWarningBannerProps> = ({
 
   const handleQuickBackup = async () => {
     try {
-      sound.playCashRegister();
       const json = await exportDatabaseBackup();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       const today = new Date().toISOString().split('T')[0];
-      a.download = `thai-pos-backup-${today}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      if (onBackupCompleted) onBackupCompleted();
-      onDismiss();
+      const defaultFileName = `kind-pos-backup-${today}.json`;
+      const saved = await saveBackupFile(json, defaultFileName);
+      if (saved) {
+        sound.playCashRegister();
+        if (onBackupCompleted) onBackupCompleted();
+        onDismiss();
+      }
     } catch (err) {
       console.error('Failed to export backup', err);
     }

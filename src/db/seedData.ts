@@ -1,4 +1,4 @@
-import { AppSettings, AppUser, DiningTable, FloorZone, MenuCategory, MenuItem } from '../types';
+import { AppSettings, AppUser, DiningTable, FloorZone, MenuCategory, MenuItem, OptionGroup } from '../types';
 
 export const DEFAULT_SHOP_PROMPTPAY_QR_STAND =
   'data:image/svg+xml;utf8,' +
@@ -86,6 +86,7 @@ export const defaultSettings: AppSettings = {
   autoPrintKitchenTicket: false,
   queueNumberResetDate: new Date().toISOString().split('T')[0],
   lastDailyQueue: 0,
+  dailyClosingTime: '00:00',
   customerQrOrderingEnabled: false,
 };
 
@@ -799,3 +800,66 @@ export const defaultMenuItems: MenuItem[] = [
     isFavorite: false,
   },
 ];
+
+export const defaultSharedOptionGroups: OptionGroup[] = [
+  {
+    id: 'grp_spiciness',
+    name_th: 'ระดับความเผ็ด',
+    name_en: 'Spiciness Level',
+    type: 'single',
+    required: false,
+    isShared: true,
+    sortOrder: 1,
+    options: [
+      { id: 'sp_0', name_th: 'ไม่เผ็ดเลย', name_en: 'No Spicy', priceDelta: 0, isAvailable: true },
+      { id: 'sp_1', name_th: 'เผ็ดน้อย', name_en: 'Mild Spicy', priceDelta: 0, isAvailable: true },
+      { id: 'sp_2', name_th: 'เผ็ดกลาง (มาตรฐาน)', name_en: 'Medium (Standard)', priceDelta: 0, isAvailable: true },
+      { id: 'sp_3', name_th: 'เผ็ดมาก (พริก 5 เม็ด)', name_en: 'Very Spicy', priceDelta: 0, isAvailable: true },
+    ],
+  },
+  {
+    id: 'grp_portion_size',
+    name_th: 'ขนาดจาน',
+    name_en: 'Portion Size',
+    type: 'single',
+    required: false,
+    isShared: true,
+    sortOrder: 2,
+    options: [
+      { id: 'sz_reg', name_th: 'ธรรมดา', name_en: 'Regular', priceDelta: 0, isAvailable: true },
+      { id: 'sz_special', name_th: 'พิเศษ (+ข้าว / +เนื้อ)', name_en: 'Special (+Rice / +Meat)', priceDelta: 15, isAvailable: true },
+      { id: 'sz_jumbo', name_th: 'จัมโบ้ (จุใจ 2 เท่า)', name_en: 'Jumbo (Double)', priceDelta: 30, isAvailable: true },
+    ],
+  },
+  {
+    id: 'grp_egg_addons',
+    name_th: 'ท็อปปิ้งไข่',
+    name_en: 'Egg Add-ons',
+    type: 'multiple',
+    required: false,
+    isShared: true,
+    sortOrder: 3,
+    options: [
+      { id: 'egg_fried', name_th: 'ไข่ดาวกรอบไข่แดงเยิ้ม', name_en: 'Crispy Fried Egg', priceDelta: 10, isAvailable: true },
+      { id: 'egg_omelet', name_th: 'ไข่เจียวฟูกรอบ', name_en: 'Thai Fluffy Omelet', priceDelta: 15, isAvailable: true },
+      { id: 'egg_onsen', name_th: 'ไข่ออนเซ็น', name_en: 'Onsen Soft Egg', priceDelta: 15, isAvailable: true },
+      { id: 'egg_salted', name_th: 'ไข่เค็มผ่าซีก', name_en: 'Salted Egg', priceDelta: 12, isAvailable: true },
+    ],
+  },
+  {
+    id: 'grp_sweetness',
+    name_th: 'ระดับความหวาน',
+    name_en: 'Sweetness Level',
+    type: 'single',
+    required: false,
+    isShared: true,
+    sortOrder: 4,
+    options: [
+      { id: 'sw_100', name_th: 'หวานปกติ 100%', name_en: 'Normal Sweet (100%)', priceDelta: 0, isAvailable: true },
+      { id: 'sw_50', name_th: 'หวานน้อย 50%', name_en: 'Less Sweet (50%)', priceDelta: 0, isAvailable: true },
+      { id: 'sw_25', name_th: 'หวานน้อยมาก 25%', name_en: 'Very Low Sweet (25%)', priceDelta: 0, isAvailable: true },
+      { id: 'sw_0', name_th: 'ไม่หวานเลย 0%', name_en: 'Unsweetened (0%)', priceDelta: 0, isAvailable: true },
+    ],
+  },
+];
+

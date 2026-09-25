@@ -3,6 +3,7 @@ import { ShiftRecord } from '../../types';
 
 export interface IShiftRepo {
   getCurrentShift(): Promise<ShiftRecord | undefined>;
+  getShifts(): Promise<ShiftRecord[]>;
   openShift(openedBy: string, startFloat: number): Promise<ShiftRecord>;
   closeShift(id: string, closedBy: string, countedCash: number, notes?: string): Promise<ShiftRecord>;
   recordCashTransaction(type: 'in' | 'out', amount: number): Promise<void>;
@@ -12,6 +13,10 @@ export interface IShiftRepo {
 export class DexieShiftRepo implements IShiftRepo {
   async getCurrentShift(): Promise<ShiftRecord | undefined> {
     return await db.shifts.where('status').equals('open').first();
+  }
+
+  async getShifts(): Promise<ShiftRecord[]> {
+    return await db.shifts.orderBy('openedAt').reverse().toArray();
   }
 
   async openShift(openedBy: string, startFloat: number): Promise<ShiftRecord> {

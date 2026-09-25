@@ -52,6 +52,17 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 }) => {
   const { language } = useI18n();
 
+  // Scroll locking of the background page while the drawer is open
+  React.useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const role = currentUser?.role || 'owner';
@@ -170,8 +181,8 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
         }}
       />
 
-      {/* Drawer Panel */}
-      <aside className="relative ml-auto w-full max-w-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl flex flex-col h-full border-l border-slate-200 dark:border-slate-800 z-10 animate-in slide-in-from-right duration-250">
+      {/* Drawer Panel - Anchored to the LEFT */}
+      <aside className="relative mr-auto w-full max-w-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl flex flex-col h-full border-r border-slate-200 dark:border-slate-800 z-10 animate-in slide-in-from-left duration-250">
         {/* Drawer Header */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
           <div className="flex items-center gap-2.5">
@@ -267,7 +278,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             })}
           </div>
 
-          {/* Section: Shortcuts for Food Menu (Requested by User) */}
+          {/* Section: Shortcuts for Food Menu */}
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
             <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
               {language === 'th' ? 'เมนูอาหาร (Food Menu)' : 'Food Menu'}

@@ -1,7 +1,8 @@
 import React from 'react';
-import { DiningTable, Order } from '../../types';
+import { AppSettings, DiningTable, Order } from '../../types';
 import { useI18n } from '../../i18n';
 import { sound } from '../../utils/sound';
+import { getBusinessDate, getCurrentBusinessDate } from '../../utils/businessDay';
 import {
   TrendingUp,
   Receipt,
@@ -18,6 +19,7 @@ import {
 interface DashboardViewProps {
   orders: Order[];
   tables: DiningTable[];
+  settings?: AppSettings;
   onNavigateToTables: () => void;
   onNavigateToPOS: () => void;
   onNavigateToReports: () => void;
@@ -26,18 +28,18 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({
   orders,
   tables,
+  settings,
   onNavigateToTables,
   onNavigateToPOS,
   onNavigateToReports,
 }) => {
   const { language } = useI18n();
 
-  // Calculate metrics for today
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayTimestamp = todayStart.getTime();
+  // Calculate metrics for today using business day rule
+  const closingTime = settings?.dailyClosingTime || '00:00';
+  const currentBizDate = getCurrentBusinessDate(closingTime);
 
-  const todayOrders = orders.filter((o) => o.createdAt >= todayTimestamp);
+  const todayOrders = orders.filter((o) => getBusinessDate(o.closedAt || o.createdAt, closingTime) === currentBizDate);
   const paidOrders = todayOrders.filter((o) => o.status === 'paid');
   const todayRevenue = paidOrders.reduce((sum, o) => sum + o.netTotal, 0);
   const averageTicket = paidOrders.length > 0 ? todayRevenue / paidOrders.length : 0;

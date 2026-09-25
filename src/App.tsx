@@ -19,13 +19,19 @@ import {
   orderRepo,
   settingsRepo,
   tableRepo,
+  dailyCloseRepo,
+  shiftRepo,
 } from './db/repositories';
-import { seedDatabaseIfEmpty } from './db/db';
+import { seedDatabaseIfEmpty, exportDatabaseBackup, initStoragePersistence } from './db/db';
+import { saveBackupFile } from './utils/fileBackup';
 import { useI18n } from './i18n';
 import { useBackupWarning } from './hooks/useBackupWarning';
 import { sound } from './utils/sound';
 import { calculateOrderTotals } from './utils/taxCalculator';
 import { defaultSettings, demoUsers } from './db/seedData';
+import { formatBusinessDate } from './utils/businessDay';
+import { DailyCloseSummary } from './types';
+import { CheckCircle2, Download, AlertTriangle, Utensils } from 'lucide-react';
 
 // Layout components
 import { Header } from './components/layout/Header';
@@ -190,34 +196,85 @@ export default function App() {
   }>({ isOpen: false, item: null });
   const [settingsTab, setSettingsTab] = useState<'shop' | 'tax' | 'promptpay' | 'dualscreen' | 'modifiers' | 'backup' | 'printer'>('shop');
 
+  // Storage & Loading State
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [dailyCloseNotice, setDailyCloseNotice] = useState<{ summary: DailyCloseSummary; hasOpenShift: boolean } | null>(null);
+
   // Initial Load
   const reloadAllData = useCallback(async () => {
-    await seedDatabaseIfEmpty();
-    const loadedSettings = await settingsRepo.getSettings();
-    setSettings(loadedSettings);
+    try {
+      await seedDatabaseIfEmpty();
+      const loadedSettings = await settingsRepo.getSettings();
+      setSettings(loadedSettings);
 
-    const loadedCats = await menuRepo.getCategories();
-    setCategories(loadedCats);
+      const loadedCats = await menuRepo.getCategories();
+      setCategories(loadedCats);
 
-    const loadedItems = await menuRepo.getItems();
-    setItems(loadedItems);
+      const loadedItems = await menuRepo.getItems();
+      setItems(loadedItems);
 
-    const loadedTables = await tableRepo.getTables();
-    setTables(loadedTables);
+      const loadedTables = await tableRepo.getTables();
+      setTables(loadedTables);
 
-    const loadedHeld = await orderRepo.getHeldOrders();
-    setHeldOrders(loadedHeld);
+      const loadedHeld = await orderRepo.getHeldOrders();
+      setHeldOrders(loadedHeld);
 
-    const loadedOrders = await orderRepo.getOrders(100);
-    setAllOrders(loadedOrders);
+      const loadedOrders = await orderRepo.getOrders(500);
+      setAllOrders(loadedOrders);
 
-    const loadedCust = await customerRepo.getCustomers();
-    setCustomers(loadedCust);
+      const loadedCust = await customerRepo.getCustomers();
+      setCustomers(loadedCust);
+    } catch (err: any) {
+      console.error('[Storage Error] Failed to load from IndexedDB:', err);
+      if (err?.name === 'QuotaExceededError') {
+        setStorageWarning('พื้นที่จัดเก็บบนอุปกรณ์เต็ม กรุณาลบข้อมูลหรือส่งออกสำรองข้อมูล');
+      } else {
+        setStorageWarning('กำลังทำงานในโหมดสำรอง ข้อมูลจะยังคงอยู่บนอุปกรณ์นี้');
+      }
+    }
   }, []);
 
-  useEffect(() => {
-    reloadAllData();
+  // Check and perform daily close
+  const checkDailyClose = useCallback(async () => {
+    try {
+      const shifts = await shiftRepo.getShifts();
+      const currentSt = await settingsRepo.getSettings();
+      const allOrds = await orderRepo.getOrders(1000);
+      const result = await dailyCloseRepo.checkAndPerformDailyClose(allOrds, currentSt, shifts);
+      if (result.newlyClosed.length > 0) {
+        sound.playNotificationChime();
+        const latest = result.newlyClosed[result.newlyClosed.length - 1];
+        setDailyCloseNotice({
+          summary: latest,
+          hasOpenShift: result.hasOpenShift,
+        });
+        await reloadAllData();
+        broadcastSync();
+      }
+    } catch (err) {
+      console.warn('[DailyClose] Check error:', err);
+    }
   }, [reloadAllData]);
+
+  useEffect(() => {
+    initStoragePersistence();
+    reloadAllData()
+      .then(() => {
+        checkDailyClose();
+      })
+      .finally(() => {
+        setIsInitialLoading(false);
+      });
+  }, [reloadAllData, checkDailyClose]);
+
+  // Periodic Daily Close check every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkDailyClose();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [checkDailyClose]);
 
   // Real-time Multi-Tab Sync with BroadcastChannel
   useEffect(() => {
@@ -672,6 +729,28 @@ export default function App() {
       ? (language === 'th' ? 'รายงานยอดขาย (Sales Reports)' : 'Sales Reports')
       : (language === 'th' ? 'ตั้งค่าระบบ (Settings)' : 'Settings');
 
+  if (isInitialLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-screen bg-slate-50 text-slate-900 font-sans select-none">
+        <div className="p-8 max-w-sm w-full text-center space-y-4 animate-in fade-in zoom-in-95">
+          <div className="w-16 h-16 rounded-3xl bg-orange-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-orange-500/30">
+            <Utensils className="w-8 h-8 animate-pulse" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-900">KinD POS</h1>
+            <p className="text-xs text-slate-500 mt-1">
+              {language === 'th' ? 'กำลังโหลดข้อมูลร้านจากอุปกรณ์ (IndexedDB)...' : 'Loading local store data...'}
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-xs font-semibold text-orange-600">
+            <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            <span>{language === 'th' ? 'ข้อมูลจัดเก็บบนเครื่องนี้ 100%' : '100% Local Storage'}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-dvh w-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans select-none">
       {/* Top Header Bar */}
@@ -683,6 +762,30 @@ export default function App() {
         isDarkMode={isDarkMode}
         onOpenDrawer={() => setIsNavOpen(true)}
       />
+
+      {/* Backup Warning Banner (7 days without backup) */}
+      <BackupWarningBanner
+        needsBackup={needsBackup}
+        onDismiss={dismissWarning}
+        onBackupCompleted={refreshBackupStatus}
+      />
+
+      {/* Storage Quota Warning */}
+      {storageWarning && (
+        <div className="bg-rose-600 text-white px-4 py-2 flex items-center justify-between text-xs font-semibold z-20 shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{storageWarning}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStorageWarning(null)}
+            className="text-white hover:underline cursor-pointer text-xs"
+          >
+            {language === 'th' ? 'ปิด' : 'Dismiss'}
+          </button>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden relative pb-[62px]">
@@ -745,6 +848,7 @@ export default function App() {
           {activeView === 'orders' && (
             <OrdersHistoryView
               orders={allOrders}
+              settings={settings}
               onViewReceipt={(ord: Order) => {
                 setReceiptOrder(ord);
                 setShowReceiptModal(true);
@@ -771,6 +875,7 @@ export default function App() {
             <DashboardView
               orders={allOrders}
               tables={tables}
+              settings={settings}
               onNavigateToTables={() => setCurrentView('tables')}
               onNavigateToPOS={() => setCurrentView('order')}
               onNavigateToReports={() => setCurrentView('reports')}
@@ -820,6 +925,8 @@ export default function App() {
           {activeView === 'reports' && (
             <ReportsView
               orders={allOrders}
+              settings={settings}
+              categories={categories}
             />
           )}
 
@@ -963,6 +1070,107 @@ export default function App() {
           onClose={() => setItemEditorState({ isOpen: false, item: null })}
           onSave={handleSaveMenuItem}
         />
+      )}
+      {/* Storage Warning Non-blocking Banner */}
+      {storageWarning && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+          <AlertTriangle className="w-4 h-4 text-amber-200" />
+          <span>{storageWarning}</span>
+          <button
+            type="button"
+            onClick={() => setStorageWarning(null)}
+            className="ml-2 w-5 h-5 rounded-full hover:bg-amber-700 flex items-center justify-center cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Daily Close Completed Dialog */}
+      {dailyCloseNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs select-none">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  {language === 'th' ? 'ปิดรอบยอดขายประจำวันเรียบร้อยแล้ว' : 'Daily Close Completed'}
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  {formatBusinessDate(dailyCloseNotice.summary.businessDate, language)}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">{language === 'th' ? 'ยอดขายสุทธิของวัน' : 'Total Net Sales'}:</span>
+                <span className="text-base font-black text-orange-600">
+                  ฿{dailyCloseNotice.summary.netTotal.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-500">
+                <span>{language === 'th' ? 'จำนวนบิลที่ชำระแล้ว' : 'Paid Bills'}:</span>
+                <span className="font-bold text-slate-800">{dailyCloseNotice.summary.orderCount} {language === 'th' ? 'บิล' : 'bills'}</span>
+              </div>
+              <div className="flex justify-between text-slate-500">
+                <span>{language === 'th' ? 'หมายเลขคิวสั่งกลับบ้าน' : 'Takeaway Queue Counter'}:</span>
+                <span className="font-bold text-emerald-600">{language === 'th' ? 'รีเซ็ตเริ่มต้นที่คิว 1 แล้ว' : 'Reset to Q#1'}</span>
+              </div>
+              {dailyCloseNotice.summary.carriedOverBills && dailyCloseNotice.summary.carriedOverBills.length > 0 && (
+                <div className="flex justify-between text-amber-700 font-semibold pt-1 border-t border-slate-200">
+                  <span>{language === 'th' ? 'บิลที่ยังเปิดอยู่ (ยกยอดไปวันนี้)' : 'Open Bills Carried Over'}:</span>
+                  <span>{dailyCloseNotice.summary.carriedOverBills.length} {language === 'th' ? 'บิล' : 'bills'}</span>
+                </div>
+              )}
+            </div>
+
+            {dailyCloseNotice.hasOpenShift && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5 text-xs text-amber-950">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold">{language === 'th' ? 'คำเตือน: กะการขายยังเปิดอยู่' : 'Active Cash Shift'}</div>
+                  <p className="mt-0.5 text-amber-900 leading-relaxed">
+                    {language === 'th'
+                      ? 'มีกะเงินสดที่ยังเปิดอยู่ กรุณาปิดกะและนับเงินในลิ้นชักเพื่อสรุปยอดเงินสดประจำวัน'
+                      : 'A cash shift is still active. Please close the shift and count cash drawer.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const json = await exportDatabaseBackup();
+                    const fileName = `kind-pos-backup-${dailyCloseNotice.summary.businessDate}.json`;
+                    const saved = await saveBackupFile(json, fileName);
+                    if (saved) {
+                      sound.playCashRegister();
+                    }
+                  } catch (err) {
+                    console.error('Failed to export backup', err);
+                  }
+                }}
+                className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition"
+              >
+                <Download className="w-4 h-4" />
+                <span>{language === 'th' ? 'ดาวน์โหลดไฟล์สำรอง (Backup)' : 'Download Backup'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyCloseNotice(null)}
+                className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition"
+              >
+                {language === 'th' ? 'รับทราบ' : 'Dismiss'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

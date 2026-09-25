@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { Order, OrderStatus } from '../../types';
 import { defaultSettings } from '../seedData';
+import { getBusinessDate } from '../../utils/businessDay';
 
 export interface IOrderRepo {
   getOrders(limit?: number): Promise<Order[]>;
@@ -49,19 +50,20 @@ export class DexieOrderRepo implements IOrderRepo {
   }
 
   async getNextDailyQueueNumber(): Promise<number> {
-    const todayStr = new Date().toISOString().split('T')[0];
     const settingsList = await db.settings.toArray();
     const settings = settingsList[0] || defaultSettings;
+    const closingTime = settings.dailyClosingTime || '00:00';
+    const currentBizDate = getBusinessDate(Date.now(), closingTime);
 
     let nextQueue = 1;
-    if (settings.queueNumberResetDate === todayStr) {
+    if (settings.queueNumberResetDate === currentBizDate) {
       nextQueue = (settings.lastDailyQueue || 0) + 1;
     } else {
       nextQueue = 1;
     }
 
     await db.settings.update(settings.id, {
-      queueNumberResetDate: todayStr,
+      queueNumberResetDate: currentBizDate,
       lastDailyQueue: nextQueue,
     });
 
@@ -77,18 +79,18 @@ export class DexieOrderRepo implements IOrderRepo {
   }
 
   async getTodaySalesSummary(): Promise<{ totalSales: number; orderCount: number; avgBill: number }> {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const startOfDay = now.getTime();
+    const settingsList = await db.settings.toArray();
+    const settings = settingsList[0] || defaultSettings;
+    const closingTime = settings.dailyClosingTime || '00:00';
+    const currentBizDate = getBusinessDate(Date.now(), closingTime);
 
-    const paidOrders = await db.orders
-      .where('createdAt')
-      .aboveOrEqual(startOfDay)
-      .filter((o) => o.status === 'paid')
-      .toArray();
+    const allPaidOrders = await db.orders.where('status').equals('paid').toArray();
+    const todayPaidOrders = allPaidOrders.filter(
+      (o) => getBusinessDate(o.closedAt || o.createdAt, closingTime) === currentBizDate
+    );
 
-    const totalSales = paidOrders.reduce((acc, curr) => acc + (curr.netTotal || 0), 0);
-    const orderCount = paidOrders.length;
+    const totalSales = todayPaidOrders.reduce((acc, curr) => acc + (curr.netTotal || 0), 0);
+    const orderCount = todayPaidOrders.length;
     const avgBill = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
 
     return { totalSales, orderCount, avgBill };

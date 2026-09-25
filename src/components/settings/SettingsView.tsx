@@ -6,7 +6,15 @@ import {
   exportDatabaseBackup,
   importDatabaseBackup,
   seedDatabaseIfEmpty,
+  resetDatabaseToDemo,
+  getStorageEstimateInfo,
+  StorageInfo,
 } from '../../db/db';
+import {
+  saveBackupFile,
+  pickBackupFile,
+  isOpenFilePickerSupported,
+} from '../../utils/fileBackup';
 import { sound } from '../../utils/sound';
 import { bluetoothPrinter, PrinterStatus } from '../../utils/bluetoothPrinter';
 import {
@@ -35,6 +43,9 @@ import {
   Plus,
   Trash2,
   Edit2,
+  Clock,
+  HardDrive,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -57,6 +68,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newModifier, setNewModifier] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getStorageEstimateInfo().then(setStorageInfo);
+  }, [activeTab]);
 
   // Staff management state (NO PIN fields, NO PIN validation)
   const [staffList, setStaffList] = useState<AppUser[]>(() => {
@@ -291,32 +308,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Export JSON backup
+  // Export JSON backup (supports File System Access API with fallback)
   const handleExportBackup = async () => {
     try {
-      sound.playCashRegister();
       const json = await exportDatabaseBackup();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       const today = new Date().toISOString().split('T')[0];
-      a.download = `thai-pos-backup-${today}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const defaultFileName = `kind-pos-backup-${today}.json`;
+      const saved = await saveBackupFile(json, defaultFileName);
+
+      if (saved) {
+        sound.playCashRegister();
+        const nowIso = new Date().toISOString();
+        setFormData((prev) => ({ ...prev, lastBackupDate: nowIso }));
+        await onUpdateSettings({ lastBackupDate: nowIso });
+        getStorageEstimateInfo().then(setStorageInfo);
+      }
     } catch (err) {
       console.error('Failed to export backup', err);
-      alert('Backup export failed');
+      alert(language === 'th' ? 'เกิดข้อผิดพลาดในการส่งออกข้อมูลสำรอง' : 'Backup export failed');
     }
   };
 
-  // Import JSON backup
-  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const executeImportBackup = async (file: File) => {
     if (!window.confirm(t('confirmRestore'))) {
-      e.target.value = '';
       return;
     }
 
@@ -325,24 +339,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const text = await file.text();
       await importDatabaseBackup(text);
       sound.playCashRegister();
-      alert('Data restored successfully!');
+      alert(language === 'th' ? 'กู้คืนข้อมูลสำเร็จเรียบร้อยแล้ว!' : 'Data restored successfully!');
       await onReloadAllData();
+      getStorageEstimateInfo().then(setStorageInfo);
     } catch (err) {
       console.error('Failed to import backup', err);
-      alert('Invalid backup JSON file');
+      alert(language === 'th' ? 'ไฟล์สำรองข้อมูล JSON ไม่ถูกต้อง หรือข้อมูลเสียหาย' : 'Invalid backup JSON file');
     } finally {
       setIsImporting(false);
-      e.target.value = '';
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
-  // Reset sample demo data
+  // Import JSON backup (supports File System Access API with fallback to file input)
+  const handleImportBackup = async () => {
+    sound.playTap();
+    if (isOpenFilePickerSupported()) {
+      try {
+        const file = await pickBackupFile();
+        if (file) {
+          await executeImportBackup(file);
+        }
+      } catch (err) {
+        console.warn('Native open file picker error, falling back to file input:', err);
+        fileInputRef.current?.click();
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await executeImportBackup(file);
+  };
+
+  // Reset sample demo data with stronger confirmation and backup offer
   const handleResetDemoData = async () => {
-    if (window.confirm(t('confirmResetData'))) {
+    sound.playTap();
+    const wantsBackup = window.confirm(
+      language === 'th'
+        ? '⚠️ คำเตือนสำคัญ: การรีเซ็ตข้อมูลจะลบประวัติการขาย บิล ยอดขาย และข้อมูลทั้งหมดบนเครื่องนี้อย่างถาวร!\n\nคุณต้องการดาวน์โหลดไฟล์สำรองข้อมูล (Backup) ไว้ก่อนหรือไม่?\n• กด "ตกลง (OK)" เพื่อดาวน์โหลดไฟล์สำรองข้อมูลก่อน\n• กด "ยกเลิก (Cancel)" หากมั่นใจและพร้อมรีเซ็ตทันที'
+        : '⚠️ IMPORTANT WARNING: Resetting data will permanently delete all sales history, bills, and data on this device!\n\nDo you want to download a backup first?\n• Click "OK" to download a backup first\n• Click "Cancel" if you are ready to reset immediately'
+    );
+
+    if (wantsBackup) {
+      await handleExportBackup();
+    }
+
+    const finalConfirm = window.confirm(
+      language === 'th'
+        ? '⚠️ ยืนยันขั้นสุดท้าย: คุณต้องการลบประวัติการขายและรีเซ็ตข้อมูลเป็นค่าเริ่มต้นใช่หรือไม่? (การกระทำนี้ไม่สามารถย้อนกลับได้)'
+        : '⚠️ FINAL CONFIRMATION: Are you sure you want to permanently delete all sales history and reset to default? (This cannot be undone)'
+    );
+
+    if (finalConfirm) {
       sound.playTap();
       localStorage.clear();
-      await seedDatabaseIfEmpty();
-      alert('Reset complete! Reloading...');
+      await resetDatabaseToDemo();
+      alert(language === 'th' ? 'รีเซ็ตข้อมูลเรียบร้อยแล้ว! กำลังโหลดหน้าใหม่...' : 'Reset complete! Reloading...');
       window.location.reload();
     }
   };
@@ -595,6 +653,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     placeholder="เช่น 0105558012345"
                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-orange-500"
                   />
+                </div>
+              </div>
+
+              {/* DAILY CLOSING TIME SETTING */}
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-700" />
+                  <label className="block text-xs font-bold text-amber-950 uppercase tracking-wider">
+                    {language === 'th' ? 'เวลาปิดยอดรายวัน (Daily Closing Time)' : 'Daily Closing Time'} *
+                  </label>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <input
+                    type="time"
+                    value={formData.dailyClosingTime || '00:00'}
+                    onChange={(e) => setFormData({ ...formData, dailyClosingTime: e.target.value })}
+                    className="bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-black text-slate-900 focus:outline-none focus:border-amber-500 w-36 shadow-2xs"
+                  />
+                  <p className="text-xs text-amber-900 leading-relaxed">
+                    {language === 'th'
+                      ? 'กำหนดเวลาตัดรอบบัญชีของวัน (ค่าเริ่มต้น 00:00) ตัวอย่าง: หากตั้งเป็น 03:00 ยอดขายที่ชำระตอน 01:30 จะถูกบันทึกเป็นของวันก่อนหน้า'
+                      : 'Cut-off time for the business day (default 00:00). Example: with 03:00, payments at 01:30 belong to the previous business day.'}
+                  </p>
                 </div>
               </div>
 
@@ -1361,6 +1442,99 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span>{t('backupTab')}</span>
               </h3>
 
+              {/* DATA STORAGE CARD */}
+              <div className="p-4 sm:p-5 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+                      <HardDrive className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-slate-900">
+                        {language === 'th' ? 'พื้นที่จัดเก็บข้อมูลบนอุปกรณ์ (Data Storage)' : 'Device Data Storage'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {language === 'th' ? 'เทคโนโลยี IndexedDB ภายในเบราว์เซอร์เครื่องนี้' : 'Native Browser IndexedDB Storage'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 ${
+                    storageInfo?.isPersisted
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>
+                      {storageInfo?.isPersisted
+                        ? (language === 'th' ? 'สิทธิ์จัดเก็บถาวร (Persistent Granted)' : 'Persistent Storage Granted')
+                        : (language === 'th' ? 'จัดเก็บมาตรฐาน (Standard Storage)' : 'Standard Storage')}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div className="text-[11px] text-slate-500 font-medium">
+                      {language === 'th' ? 'พื้นที่ที่ใช้ไป (Storage Used)' : 'Storage Used'}
+                    </div>
+                    <div className="text-lg font-black text-slate-900 mt-0.5">
+                      {storageInfo ? `${storageInfo.usageMB} MB` : 'กำลังคำนวณ...'}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {storageInfo?.quotaGB ? `${language === 'th' ? 'จากความจุที่จัดสรร' : 'of allocated'} ~${storageInfo.quotaGB} GB` : ''}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div className="text-[11px] text-slate-500 font-medium">
+                      {language === 'th' ? 'ความปลอดภัยข้อมูล (Eviction Risk)' : 'Eviction Risk'}
+                    </div>
+                    <div className="text-sm font-bold text-slate-900 mt-1 flex items-center gap-1">
+                      {storageInfo?.isPersisted ? (
+                        <span className="text-emerald-600 font-black">
+                          {language === 'th' ? 'ปลอดภัย (ไม่ถูกลบอัตโนมัติ)' : 'Safe (Protected)'}
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 font-black">
+                          {language === 'th' ? 'ปกติ (อาจถูกลบหากพื้นที่เต็ม)' : 'Standard'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {language === 'th' ? 'เบราว์เซอร์จะไม่ล้างข้อมูลอัตโนมัติ' : 'Protected from browser cache eviction'}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div className="text-[11px] text-slate-500 font-medium">
+                      {language === 'th' ? 'สำรองข้อมูลล่าสุด (Last Backup)' : 'Last Backup'}
+                    </div>
+                    <div className="text-xs font-bold text-slate-800 mt-1 truncate">
+                      {formData.lastBackupDate
+                        ? new Date(formData.lastBackupDate).toLocaleString(language === 'th' ? 'th-TH' : 'en-US', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })
+                        : (language === 'th' ? 'ยังไม่เคยดาวน์โหลด' : 'Never downloaded')}
+                    </div>
+                    <div className="text-[10px] text-orange-600 font-semibold mt-0.5">
+                      {language === 'th' ? 'แนะนำสำรองสัปดาห์ละ 1 ครั้ง' : 'Recommended weekly'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Important clear notice */}
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5 text-xs text-amber-950 leading-relaxed shadow-2xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p>
+                    {language === 'th'
+                      ? 'ข้อมูลทั้งหมดถูกบันทึกไว้ในอุปกรณ์และเบราว์เซอร์นี้เท่านั้น ข้อมูลจะสูญหายหากมีการล้างแคชหรือประวัติเบราว์เซอร์ หรือเมื่อใช้งานบนอุปกรณ์อื่น กรุณาดาวน์โหลดไฟล์สำรองข้อมูล (Backup) เป็นประจำ'
+                      : 'Data is stored only on this device and browser. It will be lost if browser data is cleared or if you use another browser/device. Please download a backup regularly.'}
+                  </p>
+                </div>
+              </div>
+
               <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
                 <div>
                   <div className="text-sm font-bold text-slate-900">
@@ -1381,16 +1555,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <span>{t('exportBackup')}</span>
                   </button>
 
-                  <label className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs border border-slate-200 cursor-pointer transition min-h-[44px]">
+                  <button
+                    type="button"
+                    onClick={handleImportBackup}
+                    disabled={isImporting}
+                    className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs border border-slate-200 cursor-pointer transition min-h-[44px]"
+                  >
                     <Upload className="w-4 h-4 text-orange-500" />
-                    <span>{isImporting ? 'กำลังกู้คืน...' : t('importBackup')}</span>
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleImportBackup}
-                      className="hidden"
-                    />
-                  </label>
+                    <span>{isImporting ? (language === 'th' ? 'กำลังกู้คืน...' : 'Restoring...') : t('importBackup')}</span>
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                  />
                 </div>
 
                 <div className="pt-4 border-t border-slate-100">

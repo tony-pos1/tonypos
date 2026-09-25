@@ -18,7 +18,8 @@ export interface OptionItem {
   id: string;
   name_th: string;
   name_en: string;
-  priceDelta: number; // e.g. +10, +0
+  priceDelta: number; // e.g. +10, +0, -5
+  isAvailable?: boolean;
 }
 
 export interface OptionGroup {
@@ -30,6 +31,9 @@ export interface OptionGroup {
   minSelections?: number;
   maxSelections?: number;
   options: OptionItem[];
+  isShared?: boolean;
+  sharedGroupId?: string;
+  sortOrder?: number;
 }
 
 export interface MenuItem {
@@ -180,6 +184,8 @@ export interface AppSettings {
   queueNumberResetDate: string; // YYYY-MM-DD
   lastDailyQueue: number;
   lastBackupDate?: string;
+  dailyClosingTime?: string; // HH:mm format, e.g. '00:00' or '03:00'
+  lastDailyClosingDate?: string; // YYYY-MM-DD of last closed business day
   
   // Feature flags
   customerQrOrderingEnabled: boolean; // OFF by default
@@ -285,3 +291,26 @@ export interface InAppNotification {
   timestamp: number;
   read: boolean;
 }
+
+export interface DailyCloseSummary {
+  id: string; // businessDate e.g. "2026-09-24"
+  businessDate: string; // YYYY-MM-DD
+  closedAt: number; // timestamp
+  closingTimeSetting: string; // e.g. "00:00"
+  orderCount: number; // number of paid bills
+  grossSales: number; // subtotal
+  discountAmount: number;
+  serviceChargeAmount: number;
+  vatAmount: number;
+  netTotal: number;
+  paymentMethods: {
+    cash: number;
+    promptpay: number;
+    credit_card: number;
+    digital_wallet: number;
+  };
+  voidedCount: number;
+  topItems: Array<{ name: string; quantity: number; sales: number }>;
+  carriedOverBills: Array<{ id: string; orderNumber: string; tableName?: string; netTotal: number }>;
+}
+

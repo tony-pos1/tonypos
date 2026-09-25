@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { MenuCategory, MenuItem } from '../../types';
+import { MenuCategory, MenuItem, OptionGroup } from '../../types';
 
 export interface IMenuRepo {
   getCategories(): Promise<MenuCategory[]>;
@@ -20,6 +20,17 @@ export interface IMenuRepo {
   toggleItemFavorite(id: string): Promise<boolean>;
   reorderItems(categoryId: string, orderedIds: string[]): Promise<void>;
   moveItemToCategory(itemId: string, newCategoryId: string): Promise<void>;
+
+  // Shared Option Groups Library
+  getSharedOptionGroups(): Promise<OptionGroup[]>;
+  getSharedOptionGroup(id: string): Promise<OptionGroup | undefined>;
+  addSharedOptionGroup(group: OptionGroup): Promise<string>;
+  updateSharedOptionGroup(id: string, changes: Partial<OptionGroup>): Promise<void>;
+  deleteSharedOptionGroup(id: string): Promise<{ affectedItemsCount: number }>;
+  reorderSharedOptionGroups(orderedIds: string[]): Promise<void>;
+  duplicateSharedOptionGroup(id: string): Promise<OptionGroup>;
+  getItemsUsingSharedGroup(groupId: string): Promise<MenuItem[]>;
+  removeSharedGroupFromItems(groupId: string): Promise<void>;
 }
 
 export class DexieMenuRepo implements IMenuRepo {
@@ -142,6 +153,131 @@ export class DexieMenuRepo implements IMenuRepo {
       sortOrder: existingCount + 1,
     });
   }
+
+  async getSharedOptionGroups(): Promise<OptionGroup[]> {
+    return await db.sharedOptionGroups.orderBy('sortOrder').toArray();
+  }
+
+  async getSharedOptionGroup(id: string): Promise<OptionGroup | undefined> {
+    return await db.sharedOptionGroups.get(id);
+  }
+
+  async addSharedOptionGroup(group: OptionGroup): Promise<string> {
+    const existing = await db.sharedOptionGroups.count();
+    const newGroup: OptionGroup = {
+      ...group,
+      id: group.id || `grp_${Date.now()}`,
+      isShared: true,
+      sortOrder: group.sortOrder || existing + 1,
+    };
+    await db.sharedOptionGroups.put(newGroup);
+    return newGroup.id;
+  }
+
+  async updateSharedOptionGroup(id: string, changes: Partial<OptionGroup>): Promise<void> {
+    await db.sharedOptionGroups.update(id, changes);
+  }
+
+  async getItemsUsingSharedGroup(groupId: string): Promise<MenuItem[]> {
+    const allItems = await db.menuItems.toArray();
+    return allItems.filter((item) =>
+      item.optionGroups?.some(
+        (g) => g.sharedGroupId === groupId || (g.isShared && g.id === groupId)
+      )
+    );
+  }
+
+  async removeSharedGroupFromItems(groupId: string): Promise<void> {
+    const items = await this.getItemsUsingSharedGroup(groupId);
+    await db.transaction('rw', db.menuItems, async () => {
+      for (const item of items) {
+        const remaining = (item.optionGroups || []).filter(
+          (g) => g.sharedGroupId !== groupId && (!g.isShared || g.id !== groupId)
+        );
+        await db.menuItems.update(item.id, { optionGroups: remaining });
+      }
+    });
+  }
+
+  async deleteSharedOptionGroup(id: string): Promise<{ affectedItemsCount: number }> {
+    const usingItems = await this.getItemsUsingSharedGroup(id);
+    const affectedItemsCount = usingItems.length;
+    await db.transaction('rw', [db.sharedOptionGroups, db.menuItems], async () => {
+      await db.sharedOptionGroups.delete(id);
+      for (const item of usingItems) {
+        const remaining = (item.optionGroups || []).filter(
+          (g) => g.sharedGroupId !== id && (!g.isShared || g.id !== id)
+        );
+        await db.menuItems.update(item.id, { optionGroups: remaining });
+      }
+    });
+    return { affectedItemsCount };
+  }
+
+  async reorderSharedOptionGroups(orderedIds: string[]): Promise<void> {
+    await db.transaction('rw', db.sharedOptionGroups, async () => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await db.sharedOptionGroups.update(orderedIds[i], { sortOrder: i + 1 });
+      }
+    });
+  }
+
+  async duplicateSharedOptionGroup(id: string): Promise<OptionGroup> {
+    const original = await db.sharedOptionGroups.get(id);
+    if (!original) throw new Error('Original option group not found');
+    const existingCount = await db.sharedOptionGroups.count();
+    const duplicated: OptionGroup = {
+      ...original,
+      id: `grp_${Date.now()}`,
+      name_th: `${original.name_th} (คัดลอก)`,
+      name_en: `${original.name_en || original.name_th} (Copy)`,
+      sortOrder: existingCount + 1,
+      isShared: true,
+      options: original.options.map((opt, idx) => ({
+        ...opt,
+        id: `opt_${Date.now()}_${idx + 1}`,
+      })),
+    };
+    await db.sharedOptionGroups.put(duplicated);
+    return duplicated;
+  }
 }
 
 export const menuRepo = new DexieMenuRepo();
+
+/**
+ * Resolves attached shared option groups for a menu item with their latest definitions
+ * from the shared option groups library, while preserving item-specific groups and the
+ * exact item-level configured ordering.
+ */
+export function resolveItemOptionGroups(
+  itemOptionGroups?: OptionGroup[],
+  sharedOptionGroups?: OptionGroup[]
+): OptionGroup[] {
+  if (!itemOptionGroups || itemOptionGroups.length === 0) return [];
+  if (!sharedOptionGroups || sharedOptionGroups.length === 0) return itemOptionGroups;
+
+  const sharedMap = new Map<string, OptionGroup>();
+  for (const s of sharedOptionGroups) {
+    sharedMap.set(s.id, s);
+  }
+
+  return itemOptionGroups
+    .map((g) => {
+      const sharedId = g.sharedGroupId || (g.isShared ? g.id : undefined);
+      if (sharedId) {
+        const shared = sharedMap.get(sharedId);
+        if (shared) {
+          return {
+            ...shared,
+            id: g.id,
+            isShared: true,
+            sharedGroupId: shared.id,
+            required: g.required !== undefined ? g.required : shared.required,
+          };
+        }
+      }
+      return g;
+    })
+    .filter(Boolean);
+}
